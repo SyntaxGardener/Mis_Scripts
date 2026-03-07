@@ -9,7 +9,7 @@ import threading
 import requests  
 
 # --- CONFIGURACIÓN GITHUB ---
-USUARIO_REPO = "SyntaxGardener/Beginner" 
+USUARIO_REPO = "SyntaxGardener/Mis_Scripts" 
 URL_VERSION_NUBE = f"https://raw.githubusercontent.com/{USUARIO_REPO}/main/version.txt"
 
 # --- CONFIGURACIÓN VISUAL ---
