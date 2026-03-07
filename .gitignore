@@ -205,3 +205,18 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ejecutables
+*.exe
+
+# archivos comprimidos
+*.zip
+*.7z
+*.rar
+
+# archivos temporales
+*.tmp
+*.bak
+
+# archivos grandes de herramientas externas
+ffmpeg*
