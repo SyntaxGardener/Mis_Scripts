@@ -4,7 +4,7 @@ from tkinter import messagebox
 class CronometroDocenteFinal:
     def __init__(self, root):
         self.root = root
-        self.root.title("Cronómetro de Aula")
+        self.root.title("Cronómetro para el Aula")
         self.root.geometry("700x650")
         self.root.configure(bg="#2c3e50")
 
