@@ -1,0 +1,1 @@
+# Test de seguridad de Git.
