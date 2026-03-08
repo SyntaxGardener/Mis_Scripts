@@ -9,12 +9,15 @@ class AppExamenesPro:
     def __init__(self, root):
         self.root = root
         self.root.title("Generador de Exámenes")
-        self.root.geometry("750x700")
+        self.root.geometry("750x750")
         
+        # Variable para guardar el nombre del excel cargado
+        self.nombre_archivo_excel = "Pro" 
+
         self.tab_control = ttk.Notebook(root)
         self.tab1 = ttk.Frame(self.tab_control)
         self.tab2 = ttk.Frame(self.tab_control)
-        self.tab_control.add(self.tab1, text=' 1. Extraer del PDF a Excel ')
+        self.tab_control.add(self.tab1, text=' 1. Extraer preguntas de PDF a Excel ')
         self.tab_control.add(self.tab2, text=' 2. Crear Examen en Word ')
         self.tab_control.pack(expand=1, fill="both")
 
@@ -25,7 +28,7 @@ class AppExamenesPro:
         self.ruta_pdf = tk.StringVar()
         self.ruta_excel_dest = tk.StringVar()
         self.nombre_excel_sugerido = ""
-        tk.Label(self.tab1, text="PASO A: Convertir apuntes en base de datos", font=("Arial", 12, "bold")).pack(pady=15)
+        tk.Label(self.tab1, text="PASO A: Convertir apuntes en base de datos de preguntas", font=("Arial", 12, "bold")).pack(pady=15)
         frame_pdf = tk.LabelFrame(self.tab1, text=" 1. Selecciona el PDF original ", padx=10, pady=10)
         frame_pdf.pack(fill="x", padx=20)
         tk.Entry(frame_pdf, textvariable=self.ruta_pdf, width=65).pack(side=tk.LEFT, padx=5)
@@ -37,7 +40,7 @@ class AppExamenesPro:
         frame_ex.pack(fill="x", padx=20, pady=15)
         tk.Entry(frame_ex, textvariable=self.ruta_excel_dest, width=65).pack(side=tk.LEFT, padx=5)
         tk.Button(frame_ex, text="Carpeta...", command=self.seleccionar_destino_excel).pack(side=tk.LEFT)
-        tk.Button(self.tab1, text="¡EJECUTAR EXTRACCIÓN!", command=self.run_extraccion, bg="#4CAF50", fg="white", font=("Arial", 11, "bold"), height=2).pack(pady=20)
+        tk.Button(self.tab1, text="EJECUTAR EXTRACCIÓN", command=self.run_extraccion, bg="#4CAF50", fg="white", font=("Arial", 11, "bold"), height=2).pack(pady=20)
 
     def seleccionar_pdf(self):
         f = filedialog.askopenfilename(filetypes=[("PDF", "*.pdf")])
@@ -84,13 +87,27 @@ class AppExamenesPro:
         self.preguntas_db = []
         self.vars_checks = []
         self.lbl_contador = tk.StringVar(value="Seleccionadas: 0 de 6")
+        
         tk.Label(self.tab2, text="PASO B: Seleccionar preguntas y crear examen", font=("Arial", 12, "bold")).pack(pady=10)
-        btn_load = tk.Button(self.tab2, text="Cargar Almacén (Excel)", command=self.load_excel, bg="#f0f0f0", padx=10)
-        btn_load.pack()
+        
+        frame_config = tk.Frame(self.tab2)
+        frame_config.pack(pady=5)
+        
+        btn_load = tk.Button(frame_config, text="Cargar Almacén (Excel)", command=self.load_excel, bg="#f0f0f0", padx=10)
+        btn_load.pack(side=tk.LEFT, padx=10)
+        
+        tk.Label(frame_config, text="Nº de preguntas en plantilla:").pack(side=tk.LEFT)
+        self.ent_max_preguntas = tk.Entry(frame_config, width=5)
+        self.ent_max_preguntas.insert(0, "6")
+        self.ent_max_preguntas.pack(side=tk.LEFT, padx=5)
+        self.ent_max_preguntas.bind("<KeyRelease>", self.actualizar_conteo)
+
         self.display_conteo = tk.Label(self.tab2, textvariable=self.lbl_contador, font=("Arial", 11, "bold"), fg="blue")
         self.display_conteo.pack(pady=5)
+
         self.canvas_frame = tk.Frame(self.tab2, bd=2, relief="sunken")
         self.canvas_frame.pack(fill="both", expand=True, padx=20)
+        
         self.canvas = tk.Canvas(self.canvas_frame)
         sb = ttk.Scrollbar(self.canvas_frame, orient="vertical", command=self.canvas.yview)
         self.scroll_list = tk.Frame(self.canvas)
@@ -99,12 +116,16 @@ class AppExamenesPro:
         self.canvas.configure(yscrollcommand=sb.set)
         self.canvas.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
-        self.btn_gen_word = tk.Button(self.tab2, text="GENERAR EXAMEN MAQUETADO (WORD)", command=self.create_word, bg="#2196F3", fg="white", font=("Arial", 11, "bold"), state="disabled", height=2)
+
+        self.btn_gen_word = tk.Button(self.tab2, text="GENERAR EXAMEN(WORD)", command=self.create_word, bg="#2196F3", fg="white", font=("Arial", 11, "bold"), state="disabled", height=2)
         self.btn_gen_word.pack(pady=20)
 
     def load_excel(self):
         f = filedialog.askopenfilename(filetypes=[("Excel", "*.xlsx")])
         if f:
+            # --- MEJORA: Guardamos el nombre del excel para el futuro ---
+            self.nombre_archivo_excel = os.path.splitext(os.path.basename(f))[0]
+            
             df = pd.read_excel(f)
             self.preguntas_db = df['Pregunta'].tolist()
             self.actualizar_lista()
@@ -121,48 +142,55 @@ class AppExamenesPro:
             tk.Checkbutton(self.scroll_list, text=texto_chk, variable=v, justify=tk.LEFT, wraplength=600, anchor="w").pack(fill="x", padx=5, pady=2)
 
     def actualizar_conteo(self, *args):
+        try:
+            limite = int(self.ent_max_preguntas.get())
+        except:
+            limite = 0
         seleccionadas = sum(1 for v in self.vars_checks if v.get())
-        self.lbl_contador.set(f"Seleccionadas: {seleccionadas} de 6")
-        self.display_conteo.config(fg="red" if seleccionadas > 6 else "blue")
+        self.lbl_contador.set(f"Seleccionadas: {seleccionadas} de {limite}")
+        self.display_conteo.config(fg="red" if seleccionadas > limite else "blue")
 
     def maquetar_texto(self, texto):
-        """Reglas de maquetación avanzada para exámenes"""
-        # 1. Salto después de interrogación
         texto = re.sub(r'\?', '?\n', texto)
-        # 2. Salto antes de a), b)... o A), B)...
         texto = re.sub(r'\s+([a-zA-Z]\))', r'\n\1', texto)
-        # 3. Salto antes de viñeta •
         texto = re.sub(r'\s+•', r'\n•', texto)
-        # 4. NUEVO: Salto antes de letra mayúscula con punto (ej: . C. )
         texto = re.sub(r'\.\s+([A-Z]\.)', r'.\n\1', texto)
-        # 5. NUEVO: Salto antes de línea de respuesta (ej: . _________ )
         texto = re.sub(r'\.\s+(_+)', r'.\n\1', texto)
-        # 6. Salto antes de numeración tipo lista (ej: . 1 )
         texto = re.sub(r'\.\s+(\d+)\s+', r'.\n\1 ', texto)
-        # 7. Salto antes de número con punto o paréntesis
         texto = re.sub(r'\s+(\d+[\.\)])', r'\n\1', texto)
-        
-        # Limpieza final de espacios dobles y saltos vacíos
         texto = re.sub(r'\n+', '\n', texto)
         return texto.strip()
 
     def create_word(self):
+        try:
+            limite = int(self.ent_max_preguntas.get())
+        except:
+            messagebox.showerror("Error", "Introduce un número válido.")
+            return
+
         sel = [self.preguntas_db[i] for i, v in enumerate(self.vars_checks) if v.get()]
         if not sel: return
+        
         plantilla = filedialog.askopenfilename(title="Elige Plantilla examen.docx", filetypes=[("Word", "*.docx")])
         if not plantilla: return
-        out = filedialog.asksaveasfilename(defaultextension=".docx", initialfile="Examen_Maquetado_Pro.docx")
+        
+        # --- MEJORA: Aquí toma el nombre del Excel ---
+        sugerencia_nombre = f"Examen_{self.nombre_archivo_excel}.docx"
+        out = filedialog.asksaveasfilename(defaultextension=".docx", initialfile=sugerencia_nombre)
+        
         if not out: return
+
         try:
             doc = Document(plantilla)
             n = 1
             for p in doc.paragraphs:
-                if f"Pregunta {n}." in p.text and n <= len(sel):
+                marcador = f"Pregunta {n}."
+                if marcador in p.text and n <= len(sel) and n <= limite:
                     texto_limpio = self.maquetar_texto(sel[n-1])
                     p.add_run(f" {texto_limpio}")
                     n += 1
             doc.save(out)
-            messagebox.showinfo("¡Éxito!", "Examen maquetado y guardado.")
+            messagebox.showinfo("¡Éxito!", "Examen guardado.")
             os.startfile(os.path.dirname(out))
         except Exception as e: messagebox.showerror("Error", f"Fallo: {e}")
 
