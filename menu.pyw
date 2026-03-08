@@ -17,13 +17,15 @@ COLORES = {
     "FAVORITOS": "#ffffff",
     "SISTEMA": "#ff4d4d",
     "PDF": "#3498db",
+    "CLASES": "#9b59b6",  # <--- NUEVA CATEGORÍA (Color Púrpura)
     "ADMINISTRACIÓN": "#f1c40f",
     "AULA": "#2ecc71",
     "OTROS": "#e0e0e0"
 }
 FAV_FILE = "favoritos.txt"
 
-# --- FUNCIONES DE APOYO ---
+# ... (Las funciones leer_favoritos, guardar_favoritos, obtener_info_sistema y ejecutar_herramienta se mantienen igual) ...
+
 def leer_favoritos():
     if os.path.exists(FAV_FILE):
         try:
@@ -99,7 +101,6 @@ class MenuFinalPerfecto:
         self.lbl_modo = tk.Label(self.status_bar, fg="#aaaaaa", bg="#1a1a1a", font=("Segoe UI", 8, "bold"))
         self.lbl_modo.pack(side="left", padx=10)
         
-        # Etiqueta para GitHub
         self.lbl_v_nube = tk.Label(self.status_bar, text="Conectando...", fg="#00ffff", bg="#1a1a1a", font=("Segoe UI", 8, "bold"))
         self.lbl_v_nube.pack(side="left", padx=20)
         
@@ -126,9 +127,9 @@ class MenuFinalPerfecto:
         
         self.cargar_scripts()
         
-        # Lanzar el chequeo al iniciar
         threading.Thread(target=self.chequear_version_nube, daemon=True).start()
 
+    # ... (Métodos intermedios se mantienen igual) ...
     def chequear_version_nube(self):
         try:
             r = requests.get(URL_VERSION_NUBE, timeout=5)
@@ -156,12 +157,19 @@ class MenuFinalPerfecto:
     def _on_mousewheel(self, event):
         self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
+    # --- MÉTODO MODIFICADO ---
     def clasificar(self, nombre):
         n = nombre.lower()
         if nombre in self.favoritos: return "FAVORITOS"
         if any(x in n for x in ["expulsar", "pc", "test", "usb", "imports", "limpieza", "borrar", "temp", "organizador"]): return "SISTEMA"
         if "pdf" in n: return "PDF"
-        if any(x in n for x in ["notas", "horario", "diligencia", "examenes", "certificados", "calculador", "diplomas"]): return "ADMINISTRACIÓN"
+        
+        # Nueva categoría CLASES (prioritaria sobre Administración)
+        if any(x in n for x in ["examenes", "notas"]): return "CLASES"
+        
+        # Administración (sin notas ni exámenes)
+        if any(x in n for x in ["horario", "diligencia", "certificados", "calculador", "diplomas"]): return "ADMINISTRACIÓN"
+        
         if any(x in n for x in ["bingo", "crono", "traductor", "pasapalabra", "picker", "clase", "qr", "juego"]): return "AULA"
         return "OTROS"
 
@@ -178,10 +186,14 @@ class MenuFinalPerfecto:
         for f in archivos:
             base, ext = os.path.splitext(f)
             if base not in mapeo or ext.lower() == ".pyw": mapeo[base] = f
+        
+        # Generar las listas vacías para cada categoría definida en COLORES
         cats = {cat: [] for cat in COLORES.keys()}
+        
         for f in mapeo.values():
             if termino and termino not in f.lower(): continue
             cats[self.clasificar(f)].append(f)
+            
         fila = 0
         self.scrollable_frame.grid_columnconfigure((0, 1), weight=1)
         for cat, lista in cats.items():
@@ -198,6 +210,7 @@ class MenuFinalPerfecto:
                 fila += (len(lista) + 1) // 2
         tk.Frame(self.scrollable_frame, height=50, bg="#181818").grid(row=fila, column=0)
 
+    # ... (Resto de métodos se mantienen igual) ...
     def crear_boton(self, ruta, f, c, col):
         nombre = os.path.splitext(os.path.basename(ruta))[0].replace("_", " ").capitalize()
         btn = tk.Button(self.scrollable_frame, text=nombre, font=("Segoe UI", 10, "bold"), bg="#252525", fg=col,
