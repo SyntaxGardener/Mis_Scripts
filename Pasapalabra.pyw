@@ -12,7 +12,7 @@ class PasapalabraPro:
         self.datos = []
         self.indice = 0
         self.aciertos = 0
-        self.tiempo_total = 180 # Valor por defecto
+        self.tiempo_total = 120 # Valor por defecto
         self.timer_id = None
         self.juego_activo = False
 
