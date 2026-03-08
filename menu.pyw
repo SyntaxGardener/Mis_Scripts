@@ -1,16 +1,11 @@
 # -*- coding: utf-8 -*-
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, simpledialog
 import subprocess
 import os
 import sys
 import shutil
 import threading
-import requests  
-
-# --- CONFIGURACIÓN GITHUB ---
-USUARIO_REPO = "SyntaxGardener/Mis_Scripts" 
-URL_VERSION_NUBE = f"https://raw.githubusercontent.com/{USUARIO_REPO}/main/version.txt"
 
 # --- CONFIGURACIÓN VISUAL ---
 COLORES = {
@@ -24,8 +19,7 @@ COLORES = {
 }
 FAV_FILE = "favoritos.txt"
 
-# ... (Las funciones leer_favoritos, guardar_favoritos, obtener_info_sistema y ejecutar_herramienta se mantienen igual) ...
-
+# --- FUNCIONES DE SOPORTE ---
 def leer_favoritos():
     if os.path.exists(FAV_FILE):
         try:
@@ -72,7 +66,6 @@ class MenuFinalPerfecto:
         self.root.title("BIBLIOTECA DE HERRAMIENTAS")
         self.root.geometry("820x850")
         self.root.configure(bg="#121212")
-        self.VERSION_LOCAL = "1.0"
         
         self.favoritos = leer_favoritos()
         self.estados_carpetas = {cat: False for cat in COLORES.keys()}
@@ -82,8 +75,13 @@ class MenuFinalPerfecto:
         header_frame.pack(fill="x", padx=20, pady=10)
         tk.Label(header_frame, text="MIS HERRAMIENTAS", fg="#ffffff", bg="#121212", font=("Segoe UI Semibold", 18)).pack(side="left", padx=10)
         
+        # Botones de Acción
         tk.Button(header_frame, text="🔄 REFRESCAR", font=("Segoe UI", 8, "bold"), bg="#333333", fg="white", 
-                  relief="flat", command=self.actualizar_todo).pack(side="right", padx=10)
+                  relief="flat", command=self.actualizar_todo).pack(side="right", padx=5)
+        
+        self.btn_sync = tk.Button(header_frame, text="☁️ SUBIR A GITHUB", font=("Segoe UI", 8, "bold"), bg="#2ecc71", fg="black", 
+                                  relief="flat", command=self.realizar_push_automatico)
+        self.btn_sync.pack(side="right", padx=5)
 
         # --- 2. BUSCADOR ---
         search_frame = tk.Frame(self.root, bg="#2d2d2d", padx=10, pady=5)
@@ -101,8 +99,8 @@ class MenuFinalPerfecto:
         self.lbl_modo = tk.Label(self.status_bar, fg="#aaaaaa", bg="#1a1a1a", font=("Segoe UI", 8, "bold"))
         self.lbl_modo.pack(side="left", padx=10)
         
-        self.lbl_v_nube = tk.Label(self.status_bar, text="Conectando...", fg="#00ffff", bg="#1a1a1a", font=("Segoe UI", 8, "bold"))
-        self.lbl_v_nube.pack(side="left", padx=20)
+        self.lbl_git = tk.Label(self.status_bar, text="Git: Comprobando...", fg="#00ffff", bg="#1a1a1a", font=("Segoe UI", 8, "bold"))
+        self.lbl_git.pack(side="left", padx=20)
         
         self.lbl_info = tk.Label(self.status_bar, fg="#888888", bg="#1a1a1a", font=("Segoe UI", 8))
         self.lbl_info.pack(side="right", padx=10)
@@ -126,24 +124,46 @@ class MenuFinalPerfecto:
         self.root.bind_all("<MouseWheel>", self._on_mousewheel)
         
         self.cargar_scripts()
-        
-        threading.Thread(target=self.chequear_version_nube, daemon=True).start()
+        threading.Thread(target=self.comprobar_git_status, daemon=True).start()
 
-    # ... (Métodos intermedios se mantienen igual) ...
-    def chequear_version_nube(self):
+    # --- LÓGICA DE GIT ---
+    def comprobar_git_status(self):
+        """Analiza si hay cambios locales o remotos."""
         try:
-            r = requests.get(URL_VERSION_NUBE, timeout=5)
-            if r.status_code == 200:
-                v_nube = r.text.strip()
-                if v_nube > self.VERSION_LOCAL:
-                    self.lbl_v_nube.config(text=f"🚀 VERSIÓN {v_nube} DISPONIBLE", fg="#ffff00")
-                else:
-                    self.lbl_v_nube.config(text="✅ SISTEMA AL DÍA", fg="#00ff00")
-            else:
-                self.lbl_v_nube.config(text=f"❌ ERROR {r.status_code} EN NUBE", fg="#ff8c00")
-        except:
-            self.lbl_v_nube.config(text="🌐 SIN CONEXIÓN", fg="#ff4d4d")
+            subprocess.run(["git", "fetch"], capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            cambios_locales = subprocess.check_output(["git", "status", "--porcelain"], text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
+            local_hash = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
+            remote_hash = subprocess.check_output(["git", "rev-parse", "@{u}"], text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
 
+            if cambios_locales:
+                self.lbl_git.config(text="⚠️ CAMBIOS LOCALES DETECTADOS", fg="#ff8c00")
+                self.btn_sync.config(bg="#ff8c00", state="normal")
+            elif local_hash != remote_hash:
+                self.lbl_git.config(text="🚀 NUEVA VERSIÓN EN NUBE (HACER PULL)", fg="#ffff00")
+                self.btn_sync.config(bg="#333333", state="disabled") # No sube si hay que bajar primero
+            else:
+                self.lbl_git.config(text="✅ REPO SINCRONIZADO", fg="#00ff00")
+                self.btn_sync.config(bg="#333333", state="disabled")
+        except:
+            self.lbl_git.config(text="❌ GIT NO DISPONIBLE", fg="#ff4d4d")
+
+    def realizar_push_automatico(self):
+        """Ejecuta el ciclo Add + Commit + Push."""
+        mensaje = simpledialog.askstring("Git Push", "Escribe qué has cambiado (mensaje del commit):", parent=self.root)
+        if mensaje:
+            try:
+                self.lbl_git.config(text="⏳ SUBIENDO...", fg="#00ffff")
+                subprocess.run(["git", "add", "."], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                subprocess.run(["git", "commit", "-m", mensaje], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                subprocess.run(["git", "push"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                
+                messagebox.showinfo("Git Success", "¡Cambios subidos correctamente a GitHub!")
+                self.actualizar_todo()
+            except Exception as e:
+                messagebox.showerror("Error Git", f"No se pudo completar la subida:\n{e}")
+                self.actualizar_todo()
+
+    # --- MÉTODOS DE INTERFAZ ---
     def actualizar_barra_estado(self):
         modo = "PORTABLE (USB)" if "C:" not in os.path.abspath(__file__).upper() else "PC LOCAL"
         self.lbl_modo.config(text=f"📍 {modo}")
@@ -152,24 +172,18 @@ class MenuFinalPerfecto:
     def actualizar_todo(self):
         self.actualizar_barra_estado()
         self.cargar_scripts()
-        threading.Thread(target=self.chequear_version_nube, daemon=True).start()
+        threading.Thread(target=self.comprobar_git_status, daemon=True).start()
 
     def _on_mousewheel(self, event):
         self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
-    # --- MÉTODO MODIFICADO ---
     def clasificar(self, nombre):
         n = nombre.lower()
         if nombre in self.favoritos: return "FAVORITOS"
         if any(x in n for x in ["expulsar", "pc", "test", "usb", "imports", "limpieza", "borrar", "temp", "organizador"]): return "SISTEMA"
         if "pdf" in n: return "PDF"
-        
-        # Nueva categoría CLASES (prioritaria sobre Administración)
         if any(x in n for x in ["examenes", "notas"]): return "CLASES"
-        
-        # Administración (sin notas ni exámenes)
         if any(x in n for x in ["horario", "diligencia", "certificados", "calculador", "diplomas"]): return "ADMINISTRACIÓN"
-        
         if any(x in n for x in ["bingo", "crono", "traductor", "pasapalabra", "picker", "clase", "qr", "juego"]): return "AULA"
         return "OTROS"
 
@@ -179,17 +193,17 @@ class MenuFinalPerfecto:
         if termino == "buscar...": termino = ""
         ruta_base = os.path.dirname(os.path.abspath(__file__))
         ignorar = [os.path.basename(__file__), "lanzador.bat", "iniciar.vbs"]
+        
         try:
             archivos = [f for f in os.listdir(ruta_base) if f.lower().endswith(('.py', '.bat', '.pyw')) and f not in ignorar]
         except: return
+        
         mapeo = {}
         for f in archivos:
             base, ext = os.path.splitext(f)
             if base not in mapeo or ext.lower() == ".pyw": mapeo[base] = f
         
-        # Generar las listas vacías para cada categoría definida en COLORES
         cats = {cat: [] for cat in COLORES.keys()}
-        
         for f in mapeo.values():
             if termino and termino not in f.lower(): continue
             cats[self.clasificar(f)].append(f)
@@ -210,7 +224,6 @@ class MenuFinalPerfecto:
                 fila += (len(lista) + 1) // 2
         tk.Frame(self.scrollable_frame, height=50, bg="#181818").grid(row=fila, column=0)
 
-    # ... (Resto de métodos se mantienen igual) ...
     def crear_boton(self, ruta, f, c, col):
         nombre = os.path.splitext(os.path.basename(ruta))[0].replace("_", " ").capitalize()
         btn = tk.Button(self.scrollable_frame, text=nombre, font=("Segoe UI", 10, "bold"), bg="#252525", fg=col,
