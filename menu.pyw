@@ -39,7 +39,7 @@ def obtener_info_sistema():
     try:
         total, usado, libre = shutil.disk_usage(unidad if unidad else "/")
         gb_libres = libre // (2**30)
-        return f"{v_python}  |  {unidad if unidad else 'C:'} ({gb_libres} GB libres)"
+        return f"{v_python}  |  {unidad if unidad else 'USB'} ({gb_libres} GB libres)"
     except:
         return f"{v_python}"
 
@@ -63,7 +63,7 @@ def ejecutar_herramienta(ruta_archivo, ventana_principal):
 class MenuFinalPerfecto:
     def __init__(self, root):
         self.root = root
-        self.root.title("BIBLIOTECA DE HERRAMIENTAS - GIT SYNC")
+        self.root.title("BIBLIOTECA DE HERRAMIENTAS - PORTABLE GIT SYNC")
         self.root.geometry("820x850")
         self.root.configure(bg="#121212")
         
@@ -75,7 +75,7 @@ class MenuFinalPerfecto:
         header_frame.pack(fill="x", padx=20, pady=10)
         tk.Label(header_frame, text="MIS HERRAMIENTAS", fg="#ffffff", bg="#121212", font=("Segoe UI Semibold", 18)).pack(side="left", padx=10)
         
-        # Botones de Git y Refrescar
+        # Botones de Acción
         tk.Button(header_frame, text="🔄", font=("Segoe UI", 10, "bold"), bg="#333333", fg="white", 
                   relief="flat", command=self.actualizar_todo).pack(side="right", padx=5)
         
@@ -83,7 +83,7 @@ class MenuFinalPerfecto:
                                   relief="flat", state="disabled", command=self.realizar_push)
         self.btn_push.pack(side="right", padx=5)
 
-        self.btn_pull = tk.Button(header_frame, text="📥 DESCARGAR NOVEDADES", font=("Segoe UI", 8, "bold"), bg="#333333", fg="white", 
+        self.btn_pull = tk.Button(header_frame, text="📥 DESCARGAR", font=("Segoe UI", 8, "bold"), bg="#333333", fg="white", 
                                   relief="flat", state="disabled", command=self.realizar_pull)
         self.btn_pull.pack(side="right", padx=5)
 
@@ -103,7 +103,7 @@ class MenuFinalPerfecto:
         self.lbl_modo = tk.Label(self.status_bar, fg="#aaaaaa", bg="#1a1a1a", font=("Segoe UI", 8, "bold"))
         self.lbl_modo.pack(side="left", padx=10)
         
-        self.lbl_git = tk.Label(self.status_bar, text="Git: Comprobando...", fg="#00ffff", bg="#1a1a1a", font=("Segoe UI", 8, "bold"))
+        self.lbl_git = tk.Label(self.status_bar, text="Git: Buscando...", fg="#00ffff", bg="#1a1a1a", font=("Segoe UI", 8, "bold"))
         self.lbl_git.pack(side="left", padx=20)
         
         self.lbl_info = tk.Label(self.status_bar, fg="#888888", bg="#1a1a1a", font=("Segoe UI", 8))
@@ -128,53 +128,76 @@ class MenuFinalPerfecto:
         self.cargar_scripts()
         threading.Thread(target=self.comprobar_git_status, daemon=True).start()
 
-    # --- LÓGICA DE GIT ---
+    # --- DETECCIÓN Y LÓGICA DE GIT PORTABLE ---
+    def obtener_comando_git(self):
+        """Busca el ejecutable de Git en carpetas comunes del USB."""
+        ruta_base = os.path.dirname(os.path.abspath(__file__))
+        # Lista de rutas donde suele estar git.exe en instalaciones portables
+        posibles = [
+            os.path.join(ruta_base, "git", "bin", "git.exe"),
+            os.path.join(ruta_base, "GitParaWindows", "bin", "git.exe"),
+            os.path.join(ruta_base, "PortableGit", "bin", "git.exe"),
+            os.path.join(ruta_base, "bin", "git.exe")
+        ]
+        for r in posibles:
+            if os.path.exists(r): return r
+        return "git" # Si no lo halla, confía en el sistema
+
     def comprobar_git_status(self):
+        cmd = self.obtener_comando_git()
+        cwd = os.path.dirname(os.path.abspath(__file__))
         try:
-            subprocess.run(["git", "fetch"], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
-            cambios_locales = subprocess.check_output(["git", "status", "--porcelain"], text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
+            # Sincronizar info con GitHub
+            subprocess.run([cmd, "fetch"], cwd=cwd, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
             
-            # Comparación de commits (local vs remoto)
-            res_comp = subprocess.check_output(["git", "rev-list", "--left-right", "--count", "main...origin/main"], text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
-            atras, adelante = res_comp.split('\t') # atras: commits locales no subidos, adelante: commits remotos no bajados
+            # Ver cambios locales (sin commit)
+            cambios_locales = subprocess.check_output([cmd, "status", "--porcelain"], cwd=cwd, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
+            
+            # Ver diferencia de commits
+            res_comp = subprocess.check_output([cmd, "rev-list", "--left-right", "--count", "main...origin/main"], cwd=cwd, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
+            atras, adelante = res_comp.split('\t')
 
             if cambios_locales:
-                self.lbl_git.config(text="⚠️ TIENES CAMBIOS SIN GUARDAR EN EL PC", fg="#ff8c00")
+                self.lbl_git.config(text="⚠️ CAMBIOS LOCALES DETECTADOS", fg="#ff8c00")
                 self.btn_push.config(bg="#ff8c00", fg="black", state="normal")
                 self.btn_pull.config(bg="#333333", fg="white", state="disabled")
             elif int(adelante) > 0:
-                self.lbl_git.config(text=f"🚀 {adelante} NOVEDADES EN GITHUB", fg="#ffff00")
+                self.lbl_git.config(text=f"🚀 {adelante} ACTUALIZACIONES EN NUBE", fg="#ffff00")
                 self.btn_pull.config(bg="#3498db", fg="white", state="normal")
                 self.btn_push.config(bg="#333333", fg="white", state="disabled")
             elif int(atras) > 0:
-                self.lbl_git.config(text="⬆️ COMMITS PENDIENTES DE SUBIR", fg="#2ecc71")
+                self.lbl_git.config(text="⬆️ PENDIENTE DE SUBIR", fg="#2ecc71")
                 self.btn_push.config(bg="#2ecc71", fg="black", state="normal")
                 self.btn_pull.config(bg="#333333", fg="white", state="disabled")
             else:
-                self.lbl_git.config(text="✅ TODO SINCRONIZADO", fg="#00ff00")
+                self.lbl_git.config(text="✅ TODO AL DÍA", fg="#00ff00")
                 self.btn_push.config(bg="#333333", fg="white", state="disabled")
                 self.btn_pull.config(bg="#333333", fg="white", state="disabled")
         except:
-            self.lbl_git.config(text="❌ ERROR DE CONEXIÓN GIT", fg="#ff4d4d")
+            self.lbl_git.config(text="❌ GIT NO DETECTADO", fg="#ff4d4d")
 
     def realizar_push(self):
-        mensaje = simpledialog.askstring("Git Push", "Nombre del cambio (Commit message):", parent=self.root)
+        cmd = self.obtener_comando_git()
+        cwd = os.path.dirname(os.path.abspath(__file__))
+        mensaje = simpledialog.askstring("Git Push", "Nombre del cambio (Commit):", parent=self.root)
         if mensaje:
             try:
-                subprocess.run(["git", "add", "."], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                subprocess.run(["git", "commit", "-m", mensaje], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                subprocess.run(["git", "push"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                messagebox.showinfo("Éxito", "Cambios subidos correctamente.")
+                subprocess.run([cmd, "add", "."], cwd=cwd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                subprocess.run([cmd, "commit", "-m", mensaje], cwd=cwd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                subprocess.run([cmd, "push"], cwd=cwd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                messagebox.showinfo("Éxito", "¡Subido a GitHub correctamente!")
                 self.actualizar_todo()
-            except Exception as e: messagebox.showerror("Error", str(e))
+            except Exception as e: messagebox.showerror("Error", f"Fallo al subir:\n{e}")
 
     def realizar_pull(self):
-        if messagebox.askyesno("Git Pull", "¿Descargar las novedades de GitHub?"):
+        cmd = self.obtener_comando_git()
+        cwd = os.path.dirname(os.path.abspath(__file__))
+        if messagebox.askyesno("Git Pull", "¿Descargar cambios de GitHub?"):
             try:
-                subprocess.run(["git", "pull"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                messagebox.showinfo("Éxito", "Archivos actualizados.")
+                subprocess.run([cmd, "pull"], cwd=cwd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                messagebox.showinfo("Éxito", "¡Archivos actualizados!")
                 self.actualizar_todo()
-            except Exception as e: messagebox.showerror("Error", str(e))
+            except Exception as e: messagebox.showerror("Error", f"Fallo al bajar:\n{e}")
 
     # --- MÉTODOS DE INTERFAZ ---
     def actualizar_barra_estado(self):
@@ -185,7 +208,7 @@ class MenuFinalPerfecto:
     def actualizar_todo(self):
         self.actualizar_barra_estado()
         self.cargar_scripts()
-        self.lbl_git.config(text="Comprobando...", fg="#00ffff")
+        self.lbl_git.config(text="Buscando...", fg="#00ffff")
         threading.Thread(target=self.comprobar_git_status, daemon=True).start()
 
     def _on_mousewheel(self, event):
