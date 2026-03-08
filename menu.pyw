@@ -18,7 +18,7 @@ COLORES = {
     "SISTEMA": "#ff4d4d",
     "PDF": "#3498db",
     "GESTIÓN": "#f1c40f",
-    "CLASE": "#2ecc71",
+    "AULA": "#2ecc71",
     "OTROS": "#e0e0e0"
 }
 FAV_FILE = "favoritos.txt"
@@ -161,8 +161,8 @@ class MenuFinalPerfecto:
         if nombre in self.favoritos: return "FAVORITOS"
         if any(x in n for x in ["expulsar", "pc", "test", "usb", "imports", "limpieza", "borrar", "temp", "organizador"]): return "SISTEMA"
         if "pdf" in n: return "PDF"
-        if any(x in n for x in ["notas", "horario", "diligencia", "certificados", "calculador", "diplomas"]): return "GESTIÓN"
-        if any(x in n for x in ["bingo", "crono", "traductor", "pasapalabra", "picker", "clase", "qr", "juego"]): return "CLASE"
+        if any(x in n for x in ["notas", "horario", "diligencia", "examenes", "certificados", "calculador", "diplomas"]): return "GESTIÓN"
+        if any(x in n for x in ["bingo", "crono", "traductor", "pasapalabra", "picker", "clase", "qr", "juego"]): return "AULA"
         return "OTROS"
 
     def cargar_scripts(self):
