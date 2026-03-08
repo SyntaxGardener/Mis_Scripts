@@ -6,6 +6,7 @@ import os
 import sys
 import shutil
 import threading
+import webbrowser
 
 # --- CONFIGURACIÓN VISUAL ---
 COLORES = {
@@ -18,6 +19,7 @@ COLORES = {
     "OTROS": "#e0e0e0"
 }
 FAV_FILE = "favoritos.txt"
+GITHUB_URL = "https://github.com/SyntaxGardener/"
 
 # --- FUNCIONES DE SOPORTE ---
 def leer_favoritos():
@@ -73,9 +75,27 @@ class MenuFinalPerfecto:
         # --- 1. HEADER ---
         header_frame = tk.Frame(self.root, bg="#121212")
         header_frame.pack(fill="x", padx=20, pady=10)
-        tk.Label(header_frame, text="MIS HERRAMIENTAS", fg="#ffffff", bg="#121212", font=("Segoe UI Semibold", 18)).pack(side="left", padx=10)
         
-        # Botones de Acción
+        # Contenedor para Título + GitHub
+        title_container = tk.Frame(header_frame, bg="#121212")
+        title_container.pack(side="left")
+
+        tk.Label(title_container, text="MIS HERRAMIENTAS", fg="#ffffff", bg="#121212", 
+                 font=("Segoe UI Semibold", 18)).pack(side="left", padx=(10, 5))
+
+        # ICONO Y ENLACE GITHUB
+        # Usamos un Frame como botón "falso" para que sea más estético
+        self.github_btn = tk.Label(title_container, text="  SyntaxGardener", 
+                                  fg="#8b949e", bg="#121212", 
+                                  font=("Segoe UI Semibold", 9), cursor="hand2")
+        self.github_btn.pack(side="left", padx=10, pady=(8, 0))
+        
+        # Eventos para el enlace
+        self.github_btn.bind("<Button-1>", lambda e: webbrowser.open(GITHUB_URL))
+        self.github_btn.bind("<Enter>", lambda e: self.github_btn.config(fg="#58a6ff")) # Color azul al pasar el ratón
+        self.github_btn.bind("<Leave>", lambda e: self.github_btn.config(fg="#8b949e"))
+        
+        # Botones de Acción (Derecha)
         tk.Button(header_frame, text="🔄", font=("Segoe UI", 10, "bold"), bg="#333333", fg="white", 
                   relief="flat", command=self.actualizar_todo).pack(side="right", padx=5)
         
@@ -128,11 +148,9 @@ class MenuFinalPerfecto:
         self.cargar_scripts()
         threading.Thread(target=self.comprobar_git_status, daemon=True).start()
 
-    # --- DETECCIÓN Y LÓGICA DE GIT PORTABLE ---
+    # (El resto de métodos obtener_comando_git, comprobar_git_status, etc. se mantienen igual)
     def obtener_comando_git(self):
-        """Busca el ejecutable de Git en carpetas comunes del USB."""
         ruta_base = os.path.dirname(os.path.abspath(__file__))
-        # Lista de rutas donde suele estar git.exe en instalaciones portables
         posibles = [
             os.path.join(ruta_base, "git", "bin", "git.exe"),
             os.path.join(ruta_base, "GitParaWindows", "bin", "git.exe"),
@@ -141,38 +159,27 @@ class MenuFinalPerfecto:
         ]
         for r in posibles:
             if os.path.exists(r): return r
-        return "git" # Si no lo halla, confía en el sistema
+        return "git"
 
     def comprobar_git_status(self):
         cmd = self.obtener_comando_git()
         cwd = os.path.dirname(os.path.abspath(__file__))
         try:
-            # Sincronizar info con GitHub
             subprocess.run([cmd, "fetch"], cwd=cwd, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
-            
-            # Ver cambios locales (sin commit)
             cambios_locales = subprocess.check_output([cmd, "status", "--porcelain"], cwd=cwd, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
-            
-            # Ver diferencia de commits
             res_comp = subprocess.check_output([cmd, "rev-list", "--left-right", "--count", "main...origin/main"], cwd=cwd, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
             atras, adelante = res_comp.split('\t')
-
             if cambios_locales:
                 self.lbl_git.config(text="⚠️ CAMBIOS LOCALES DETECTADOS", fg="#ff8c00")
                 self.btn_push.config(bg="#ff8c00", fg="black", state="normal")
-                self.btn_pull.config(bg="#333333", fg="white", state="disabled")
             elif int(adelante) > 0:
                 self.lbl_git.config(text=f"🚀 {adelante} ACTUALIZACIONES EN NUBE", fg="#ffff00")
                 self.btn_pull.config(bg="#3498db", fg="white", state="normal")
-                self.btn_push.config(bg="#333333", fg="white", state="disabled")
             elif int(atras) > 0:
                 self.lbl_git.config(text="⬆️ PENDIENTE DE SUBIR", fg="#2ecc71")
                 self.btn_push.config(bg="#2ecc71", fg="black", state="normal")
-                self.btn_pull.config(bg="#333333", fg="white", state="disabled")
             else:
                 self.lbl_git.config(text="✅ TODO AL DÍA", fg="#00ff00")
-                self.btn_push.config(bg="#333333", fg="white", state="disabled")
-                self.btn_pull.config(bg="#333333", fg="white", state="disabled")
         except:
             self.lbl_git.config(text="❌ GIT NO DETECTADO", fg="#ff4d4d")
 
@@ -199,7 +206,6 @@ class MenuFinalPerfecto:
                 self.actualizar_todo()
             except Exception as e: messagebox.showerror("Error", f"Fallo al bajar:\n{e}")
 
-    # --- MÉTODOS DE INTERFAZ ---
     def actualizar_barra_estado(self):
         modo = "PORTABLE (USB)" if "C:" not in os.path.abspath(__file__).upper() else "PC LOCAL"
         self.lbl_modo.config(text=f"📍 {modo}")
@@ -229,7 +235,7 @@ class MenuFinalPerfecto:
         termino = self.entry_busqueda.get().lower()
         if termino == "buscar...": termino = ""
         ruta_base = os.path.dirname(os.path.abspath(__file__))
-        ignorar = [os.path.basename(__file__), "lanzador.bat", "iniciar.vbs"]
+        ignorar = [os.path.basename(__file__), "lanzador.bat", "iniciar.vbs", "favoritos.txt"]
         try:
             archivos = [f for f in os.listdir(ruta_base) if f.lower().endswith(('.py', '.bat', '.pyw')) and f not in ignorar]
         except: return
