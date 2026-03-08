@@ -17,8 +17,8 @@ COLORES = {
     "FAVORITOS": "#ffffff",
     "SISTEMA": "#ff4d4d",
     "PDF": "#3498db",
-    "CLASES": "#9b59b6",  # <--- NUEVA CATEGORÍA (Color Púrpura)
     "ADMINISTRACIÓN": "#f1c40f",
+    "CLASES": "#9b59b6",
     "AULA": "#2ecc71",
     "OTROS": "#e0e0e0"
 }
