@@ -17,7 +17,7 @@ COLORES = {
     "FAVORITOS": "#ffffff",
     "SISTEMA": "#ff4d4d",
     "PDF": "#3498db",
-    "GESTIÓN": "#f1c40f",
+    "ADMINISTRACIÓN": "#f1c40f",
     "AULA": "#2ecc71",
     "OTROS": "#e0e0e0"
 }
@@ -161,7 +161,7 @@ class MenuFinalPerfecto:
         if nombre in self.favoritos: return "FAVORITOS"
         if any(x in n for x in ["expulsar", "pc", "test", "usb", "imports", "limpieza", "borrar", "temp", "organizador"]): return "SISTEMA"
         if "pdf" in n: return "PDF"
-        if any(x in n for x in ["notas", "horario", "diligencia", "examenes", "certificados", "calculador", "diplomas"]): return "GESTIÓN"
+        if any(x in n for x in ["notas", "horario", "diligencia", "examenes", "certificados", "calculador", "diplomas"]): return "ADMINISTRACIÓN"
         if any(x in n for x in ["bingo", "crono", "traductor", "pasapalabra", "picker", "clase", "qr", "juego"]): return "AULA"
         return "OTROS"
 
