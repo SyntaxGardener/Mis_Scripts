@@ -76,26 +76,22 @@ class MenuFinalPerfecto:
         header_frame = tk.Frame(self.root, bg="#121212")
         header_frame.pack(fill="x", padx=20, pady=10)
         
-        # Contenedor para Título + GitHub
         title_container = tk.Frame(header_frame, bg="#121212")
         title_container.pack(side="left")
 
         tk.Label(title_container, text="MIS HERRAMIENTAS", fg="#ffffff", bg="#121212", 
                  font=("Segoe UI Semibold", 18)).pack(side="left", padx=(10, 5))
 
-        # ICONO Y ENLACE GITHUB
-        # Usamos un Frame como botón "falso" para que sea más estético
+        # Enlace GitHub con Icono
         self.github_btn = tk.Label(title_container, text="  SyntaxGardener", 
                                   fg="#8b949e", bg="#121212", 
                                   font=("Segoe UI Semibold", 9), cursor="hand2")
         self.github_btn.pack(side="left", padx=10, pady=(8, 0))
-        
-        # Eventos para el enlace
         self.github_btn.bind("<Button-1>", lambda e: webbrowser.open(GITHUB_URL))
-        self.github_btn.bind("<Enter>", lambda e: self.github_btn.config(fg="#58a6ff")) # Color azul al pasar el ratón
+        self.github_btn.bind("<Enter>", lambda e: self.github_btn.config(fg="#58a6ff"))
         self.github_btn.bind("<Leave>", lambda e: self.github_btn.config(fg="#8b949e"))
         
-        # Botones de Acción (Derecha)
+        # Botones de Acción
         tk.Button(header_frame, text="🔄", font=("Segoe UI", 10, "bold"), bg="#333333", fg="white", 
                   relief="flat", command=self.actualizar_todo).pack(side="right", padx=5)
         
@@ -148,9 +144,8 @@ class MenuFinalPerfecto:
         self.cargar_scripts()
         threading.Thread(target=self.comprobar_git_status, daemon=True).start()
 
-   # --- DETECCIÓN Y LÓGICA DE GIT PORTABLE ---
+    # --- LÓGICA DE GIT BLINDADA ---
     def obtener_comando_git(self):
-        """Busca el ejecutable de Git en carpetas comunes del USB."""
         ruta_base = os.path.dirname(os.path.abspath(__file__))
         posibles = [
             os.path.join(ruta_base, "git", "bin", "git.exe"),
@@ -165,11 +160,9 @@ class MenuFinalPerfecto:
     def comprobar_git_status(self):
         cmd = self.obtener_comando_git()
         cwd = os.path.dirname(os.path.abspath(__file__))
-        
-        # Aseguramos directorio seguro antes de comprobar estado
         try:
-            subprocess.run([cmd, "config", "--global", "--add", "safe.directory", "*"], 
-                           creationflags=subprocess.CREATE_NO_WINDOW)
+            # Reparación automática de seguridad por cambio de PC/Unidad
+            subprocess.run([cmd, "config", "--global", "--add", "safe.directory", "*"], creationflags=subprocess.CREATE_NO_WINDOW)
             
             subprocess.run([cmd, "fetch"], cwd=cwd, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
             cambios_locales = subprocess.check_output([cmd, "status", "--porcelain"], cwd=cwd, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
@@ -198,8 +191,6 @@ class MenuFinalPerfecto:
     def realizar_push(self):
         cmd = self.obtener_comando_git()
         cwd = os.path.dirname(os.path.abspath(__file__))
-        
-        # Forzar directorio seguro antes del push
         subprocess.run([cmd, "config", "--global", "--add", "safe.directory", "*"], creationflags=subprocess.CREATE_NO_WINDOW)
         
         mensaje = simpledialog.askstring("Git Push", "Nombre del cambio (Commit):", parent=self.root)
@@ -215,8 +206,6 @@ class MenuFinalPerfecto:
     def realizar_pull(self):
         cmd = self.obtener_comando_git()
         cwd = os.path.dirname(os.path.abspath(__file__))
-        
-        # Forzar directorio seguro antes del pull
         subprocess.run([cmd, "config", "--global", "--add", "safe.directory", "*"], creationflags=subprocess.CREATE_NO_WINDOW)
         
         if messagebox.askyesno("Git Pull", "¿Descargar cambios de GitHub?"):
@@ -226,6 +215,7 @@ class MenuFinalPerfecto:
                 self.actualizar_todo()
             except Exception as e: messagebox.showerror("Error", f"Fallo al bajar:\n{e}")
 
+    # --- MÉTODOS DE INTERFAZ ---
     def actualizar_barra_estado(self):
         modo = "PORTABLE (USB)" if "C:" not in os.path.abspath(__file__).upper() else "PC LOCAL"
         self.lbl_modo.config(text=f"📍 {modo}")
