@@ -54,7 +54,8 @@ def check_and_update():
         ("yt_dlp", "yt-dlp", "Descarga YouTube", True),
         ("win32com", "pywin32", "Automatización Win", False),
         ("pythoncom", "pywin32", "Componentes COM", False),
-        ("PyInstaller", "pyinstaller", "Creador de .EXE", False)
+        ("PyInstaller", "pyinstaller", "Creador de .EXE", False),
+        ("bs4", "beautifulsoup4", "Web Scraping", True) 
     ]
     
     faltantes = []
