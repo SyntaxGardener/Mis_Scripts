@@ -1,22 +1,23 @@
+# -*- coding: utf-8 -*-
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import re
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 import pdfplumber
 import os
 import threading
+import platform
+import subprocess
 
 class ProcesadorNotasESPAD:
     def __init__(self):
-        # ---  CONFIGURACIÓN ORIGINAL ---
         self.mapeo_materias = {
             '1.2': {'LED': 'LEN', 'AUL': 'LIT', 'USLE': 'ING-1', 'ASLE': 'ING-2'},
             '2.1': {'ENL': 'LEN', 'PAL': 'LIT', 'LELE': 'ING-1', 'SOLE': 'ING-2'},
             '2.2': {'CPL': 'LEN', 'LIM': 'LIT', 'ECLE': 'ING-1', 'INLE': 'ING-2'}
         }
-        
         self.config_notas = {
             'LEN': [('Examen', 6), ('Auto', 0.5), ('Oral', 0.5), ('Escrita', 1), ('Invest', 2)],
             'LIT': [('Examen', 6), ('Auto', 1), ('Escrita', 1.5), ('Lectura', 1.5)],
@@ -102,62 +103,106 @@ class ProcesadorNotasESPAD:
                 ws.column_dimensions[col[0].column_letter].width = 25 if col[0].column <= 2 else 15
         wb.save(ruta)
 
-# --- INTERFAZ  ---
-class AppRegistroGuiada:
+class AppAsistenteFinal:
     def __init__(self, root):
         self.root = root
-        self.root.title("Generador Registro Notas Comunicación ESPAD")
-        self.root.geometry("550x280")
+        self.root.title("Generador de Registro de Notas (excel)")
+        self.root.geometry("650x480")
         
-        # Título principal
-        tk.Label(root, text="GENERADOR DE REGISTRO DE NOTAS", font=("Arial", 12, "bold"), fg="#1A237E").pack(pady=15)
+        self.archivo_pdf = ""
+        self.carpeta_destino = ""
+        self.nombre_excel = ""
+        self.abrir_al_final = tk.BooleanVar(value=True) # Activado por defecto
 
-        # Sección Carpeta Destino
-        frame_carpeta = tk.LabelFrame(root, text=" 1. Carpeta donde se guardará el Excel ", padx=10, pady=10, font=("Arial", 9, "bold"))
-        frame_carpeta.pack(pady=10, padx=20, fill="x")
-        
-        self.entry_dest = tk.Entry(frame_carpeta, font=("Arial", 9))
-        self.entry_dest.pack(side="left", padx=5, expand=True, fill="x")
-        self.entry_dest.insert(0, os.getcwd())
-        
-        btn_browse = tk.Button(frame_carpeta, text="Seleccionar Carpeta", command=self.seleccionar_destino, font=("Arial", 9))
-        btn_browse.pack(side="right")
+        tk.Label(root, text="GENERADOR DE REGISTRO DE NOTAS", font=("Arial", 13, "bold"), fg="#1A237E").pack(pady=20)
 
-        # Sección Selección PDF y Ejecución
-        frame_accion = tk.Frame(root)
-        frame_accion.pack(pady=20)
+        # PASO 1: Elegir PDF
+        self.frame1 = tk.LabelFrame(root, text=" Paso 1: Seleccionar PDF (alumnos y materias)", padx=10, pady=10)
+        self.frame1.pack(pady=10, padx=30, fill="x")
+        self.lbl_pdf = tk.Label(self.frame1, text="Esperando archivo...", fg="#757575", font=("Arial", 9, "italic"))
+        self.lbl_pdf.pack(side="left", padx=5)
+        self.btn_pdf = tk.Button(self.frame1, text="Elegir PDF", command=self.seleccionar_pdf, bg="#E1E2E1", width=12)
+        self.btn_pdf.pack(side="right")
+
+        # PASO 2: Donde y Como
+        self.frame2 = tk.LabelFrame(root, text=" Paso 2: Destino y nombre del archivo ", padx=10, pady=10)
+        self.frame2.pack(pady=10, padx=30, fill="x")
+        self.lbl_dest = tk.Label(self.frame2, text="Complete el paso 1 primero", fg="#BDBDBD", font=("Arial", 8))
+        self.lbl_dest.pack(side="top", anchor="w", padx=5)
         
-        tk.Label(frame_accion, text="2. ", font=("Arial", 10, "bold")).pack(side="left")
-        self.btn = tk.Button(frame_accion, text="SELECCIONAR PDF Y GENERAR REGISTRO", 
-                             command=self.iniciar, bg="#283593", fg="white", 
-                             font=("Arial", 10, "bold"), padx=20, pady=10)
-        self.btn.pack(side="left")
+        self.btn_dest = tk.Button(self.frame2, text="Elegir Carpeta", command=self.seleccionar_destino, bg="#E1E2E1", width=12)
+        self.btn_dest.pack(side="right", pady=5)
+
+        # PASO 3: Ejecutar y Tick
+        self.frame3 = tk.Frame(root)
+        self.frame3.pack(pady=20)
+        
+        self.chk_abrir = tk.Checkbutton(self.frame3, text="Abrir carpeta automaticamente al terminar", 
+                                       variable=self.abrir_al_final, font=("Arial", 9))
+        self.chk_abrir.pack()
+
+        self.btn_procesar = tk.Button(root, text="PASO 3: PROCESAR TODO", command=self.iniciar_proceso, 
+                                     bg="#E1E2E1", fg="black", font=("Arial", 11, "bold"), 
+                                     height=2, width=30)
+        self.btn_procesar.pack(pady=10)
+
+        self.lbl_status = tk.Label(root, text="", font=("Arial", 9, "bold"))
+        self.lbl_status.pack()
+
+    def seleccionar_pdf(self):
+        archivo = filedialog.askopenfilename(title="Selecciona el PDF", filetypes=[("PDF", "*.pdf")])
+        if archivo:
+            self.archivo_pdf = archivo
+            # Extraer el nombre sin extension para el excel
+            nombre_base = os.path.splitext(os.path.basename(archivo))[0]
+            self.nombre_excel = f"{nombre_base}.xlsx"
+            
+            self.lbl_pdf.config(text=os.path.basename(archivo), fg="#2E7D32", font=("Arial", 9, "bold"))
+            self.btn_dest.config(bg="#3F51B5", fg="white", cursor="hand2")
+            self.lbl_dest.config(text=f"Generara: {self.nombre_excel}", fg="black", font=("Arial", 9, "italic"))
 
     def seleccionar_destino(self):
-        d = filedialog.askdirectory()
-        if d:
-            self.entry_dest.delete(0, tk.END)
-            self.entry_dest.insert(0, d)
+        if not self.archivo_pdf: return
+        directorio = filedialog.askdirectory()
+        if directorio:
+            self.carpeta_destino = directorio
+            self.lbl_dest.config(text=f"En: {directorio}\nNombre: {self.nombre_excel}", fg="#2E7D32", font=("Arial", 8, "bold"))
+            self.btn_procesar.config(bg="#2E7D32", fg="white", cursor="hand2")
 
-    def iniciar(self):
-        archivo = filedialog.askopenfilename(title="Selecciona el PDF de la plataforma", filetypes=[("PDF", "*.pdf")])
-        if not archivo: return
-        self.btn.config(state='disabled', text="Procesando datos...")
-        threading.Thread(target=self.ejecutar, args=(archivo,), daemon=True).start()
+    def iniciar_proceso(self):
+        if not self.archivo_pdf or not self.carpeta_destino:
+            return
+        self.btn_procesar.config(text="TRABAJANDO...", bg="#FFA000")
+        self.lbl_status.config(text="Extrayendo datos y aplicando estilos...", fg="#1A237E")
+        threading.Thread(target=self.ejecutar, daemon=True).start()
 
-    def ejecutar(self, archivo):
+    def ejecutar(self):
         try:
             p = ProcesadorNotasESPAD()
-            datos, bloqueos = p.extraer(archivo)
-            ruta_excel = os.path.join(self.entry_dest.get(), "Registro_Notas_ESPAD.xlsx")
-            p.generar_excel(datos, bloqueos, ruta_excel)
-            messagebox.showinfo("Proceso Exitoso", f"El registro se ha creado correctamente en:\n{ruta_excel}")
+            datos, bloqueos = p.extraer(self.archivo_pdf)
+            ruta_completa = os.path.join(self.carpeta_destino, self.nombre_excel)
+            p.generar_excel(datos, bloqueos, ruta_completa)
+            
+            self.root.after(0, self.finalizar_exito)
         except Exception as e:
-            messagebox.showerror("Error", f"Se produjo un error durante el proceso:\n{str(e)}")
-        finally:
-            self.btn.config(state='normal', text="SELECCIONAR PDF Y GENERAR REGISTRO")
+            messagebox.showerror("Error", str(e))
+            self.root.after(0, lambda: self.btn_procesar.config(text="REINTENTAR", bg="#D32F2F"))
+
+    def finalizar_exito(self):
+        self.btn_procesar.config(text="¡COMPLETADO!", bg="#2E7D32")
+        self.lbl_status.config(text="Archivo generado con exito", fg="#2E7D32")
+        
+        if self.abrir_al_final.get():
+            self.abrir_explorador()
+        else:
+            messagebox.showinfo("Hecho", f"El archivo {self.nombre_excel} esta listo.")
+
+    def abrir_explorador(self):
+        if platform.system() == "Windows": os.startfile(self.carpeta_destino)
+        elif platform.system() == "Darwin": subprocess.Popen(["open", self.carpeta_destino])
+        else: subprocess.Popen(["xdg-open", self.carpeta_destino])
 
 if __name__ == "__main__":
     root = tk.Tk()
-    AppRegistroGuiada(root)
+    app = AppAsistenteFinal(root)
     root.mainloop()
