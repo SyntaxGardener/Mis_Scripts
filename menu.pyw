@@ -148,8 +148,9 @@ class MenuFinalPerfecto:
         self.cargar_scripts()
         threading.Thread(target=self.comprobar_git_status, daemon=True).start()
 
-    # (El resto de métodos obtener_comando_git, comprobar_git_status, etc. se mantienen igual)
+   # --- DETECCIÓN Y LÓGICA DE GIT PORTABLE ---
     def obtener_comando_git(self):
+        """Busca el ejecutable de Git en carpetas comunes del USB."""
         ruta_base = os.path.dirname(os.path.abspath(__file__))
         posibles = [
             os.path.join(ruta_base, "git", "bin", "git.exe"),
@@ -164,28 +165,43 @@ class MenuFinalPerfecto:
     def comprobar_git_status(self):
         cmd = self.obtener_comando_git()
         cwd = os.path.dirname(os.path.abspath(__file__))
+        
+        # Aseguramos directorio seguro antes de comprobar estado
         try:
+            subprocess.run([cmd, "config", "--global", "--add", "safe.directory", "*"], 
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+            
             subprocess.run([cmd, "fetch"], cwd=cwd, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
             cambios_locales = subprocess.check_output([cmd, "status", "--porcelain"], cwd=cwd, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
             res_comp = subprocess.check_output([cmd, "rev-list", "--left-right", "--count", "main...origin/main"], cwd=cwd, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
             atras, adelante = res_comp.split('\t')
+
             if cambios_locales:
                 self.lbl_git.config(text="⚠️ CAMBIOS LOCALES DETECTADOS", fg="#ff8c00")
                 self.btn_push.config(bg="#ff8c00", fg="black", state="normal")
+                self.btn_pull.config(bg="#333333", fg="white", state="disabled")
             elif int(adelante) > 0:
                 self.lbl_git.config(text=f"🚀 {adelante} ACTUALIZACIONES EN NUBE", fg="#ffff00")
                 self.btn_pull.config(bg="#3498db", fg="white", state="normal")
+                self.btn_push.config(bg="#333333", fg="white", state="disabled")
             elif int(atras) > 0:
                 self.lbl_git.config(text="⬆️ PENDIENTE DE SUBIR", fg="#2ecc71")
                 self.btn_push.config(bg="#2ecc71", fg="black", state="normal")
+                self.btn_pull.config(bg="#333333", fg="white", state="disabled")
             else:
                 self.lbl_git.config(text="✅ TODO AL DÍA", fg="#00ff00")
+                self.btn_push.config(bg="#333333", fg="white", state="disabled")
+                self.btn_pull.config(bg="#333333", fg="white", state="disabled")
         except:
             self.lbl_git.config(text="❌ GIT NO DETECTADO", fg="#ff4d4d")
 
     def realizar_push(self):
         cmd = self.obtener_comando_git()
         cwd = os.path.dirname(os.path.abspath(__file__))
+        
+        # Forzar directorio seguro antes del push
+        subprocess.run([cmd, "config", "--global", "--add", "safe.directory", "*"], creationflags=subprocess.CREATE_NO_WINDOW)
+        
         mensaje = simpledialog.askstring("Git Push", "Nombre del cambio (Commit):", parent=self.root)
         if mensaje:
             try:
@@ -199,6 +215,10 @@ class MenuFinalPerfecto:
     def realizar_pull(self):
         cmd = self.obtener_comando_git()
         cwd = os.path.dirname(os.path.abspath(__file__))
+        
+        # Forzar directorio seguro antes del pull
+        subprocess.run([cmd, "config", "--global", "--add", "safe.directory", "*"], creationflags=subprocess.CREATE_NO_WINDOW)
+        
         if messagebox.askyesno("Git Pull", "¿Descargar cambios de GitHub?"):
             try:
                 subprocess.run([cmd, "pull"], cwd=cwd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
