@@ -1,197 +1,157 @@
 # -*- coding: utf-8 -*-
 import os
-import subprocess
-import platform
-import threading
 import shutil
 from pathlib import Path
-from datetime import datetime
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+import platform
+import subprocess
+from datetime import datetime
 
-class SincronizadorUltra:
+class SincronizadorConFechas:
     def __init__(self, root):
         self.root = root
-        self.root.title("Sincronizador de Carpetas")
-        
-        # Geometria
-        ancho, alto = 1050, 850
+        self.root.title("Sincronizador de Archivos")
+        # Esto pone la ventana de 1000x700, centrada horizontalmente y pegada arriba (0)
+        ancho = 1000
+        alto = 700
         pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
         self.root.geometry(f"{ancho}x{alto}+{pos_x}+0")
         
-        # Variables
         self.ruta_a = tk.StringVar()
         self.ruta_b = tk.StringVar()
-        self.filtro_var = tk.StringVar()
-        self.items_analizados = [] 
+        self.lista_datos = [] 
 
-        # --- Interfaz de Rutas ---
-        f_rutas = tk.LabelFrame(root, text=" Seleccion de Directorios ", padx=10, pady=10)
-        f_rutas.pack(pady=10, padx=15, fill="x")
+        # --- Selección de carpetas ---
+        f_top = tk.LabelFrame(root, text=" 1. Directorios de Trabajo ", padx=10, pady=10)
+        f_top.pack(fill="x", padx=15, pady=10)
 
-        for i, (label, var) in enumerate([("Carpeta A:", self.ruta_a), ("Carpeta B:", self.ruta_b)]):
-            tk.Label(f_rutas, text=label).grid(row=i, column=0, sticky="e", pady=2)
-            tk.Entry(f_rutas, textvariable=var, width=80).grid(row=i, column=1, padx=5)
-            tk.Button(f_rutas, text="Explorar", command=lambda v=var: self.seleccionar(v)).grid(row=i, column=2)
+        for i, (txt, var) in enumerate([("Carpeta A:", self.ruta_a), ("Carpeta B:", self.ruta_b)]):
+            tk.Label(f_top, text=txt).grid(row=i, column=0, sticky="e")
+            tk.Entry(f_top, textvariable=var, width=90).grid(row=i, column=1, padx=5, pady=2)
+            tk.Button(f_top, text="Buscar", command=lambda v=var: self.elegir(v)).grid(row=i, column=2)
 
-        # --- Panel de Control ---
-        f_control = tk.Frame(root, padx=15)
-        f_control.pack(fill="x", pady=5)
+        # --- Panel de Mandos ---
+        f_ctrl = tk.Frame(root, padx=15)
+        f_ctrl.pack(fill="x")
 
-        self.btn_ana = tk.Button(f_control, text="ANALIZAR", command=self.iniciar_analisis, bg="#28a745", fg="white", font=('Arial', 9, 'bold'), padx=10)
+        self.btn_ana = tk.Button(f_ctrl, text="🔍 ANALIZAR DIFERENCIAS", command=self.analizar, bg="#28a745", fg="white", font=("Arial", 9, "bold"), padx=15)
         self.btn_ana.pack(side=tk.LEFT)
 
-        tk.Label(f_control, text="   Filtrar:").pack(side=tk.LEFT)
-        self.entry_filtro = tk.Entry(f_control, textvariable=self.filtro_var, width=30)
-        self.entry_filtro.pack(side=tk.LEFT, padx=5)
-        self.filtro_var.trace_add("write", lambda *args: self.refrescar_tabla())
+        tk.Button(f_ctrl, text="Seleccionar TODO", command=self.seleccionar_todo).pack(side=tk.RIGHT, padx=5)
+        tk.Button(f_ctrl, text="Limpiar Selección", command=self.deseleccionar).pack(side=tk.RIGHT, padx=5)
 
-        self.btn_invertir = tk.Button(f_control, text="Invertir Seleccion", command=self.invertir_seleccion)
-        self.btn_invertir.pack(side=tk.RIGHT)
-
-        # --- Tabla ---
-        self.tree = ttk.Treeview(root, columns=("archivo", "detalles"), show="tree headings")
-        self.tree.heading("#0", text="Estado / Accion")
-        self.tree.heading("archivo", text="Ruta del Archivo")
-        self.tree.heading("detalles", text="Comparativa de Fechas")
-        self.tree.column("#0", width=280); self.tree.column("archivo", width=380)
+        # --- Tabla con columna de Detalles/Fechas ---
+        self.tree = ttk.Treeview(root, columns=("archivo", "info"), show="tree headings")
+        self.tree.heading("#0", text="Categoría")
+        self.tree.heading("archivo", text="Nombre del Archivo")
+        self.tree.heading("info", text="Comparativa de Fechas (A vs B)")
         
-        self.tree.tag_configure('nuevo', foreground='#2e7d32', font=('Arial', 9, 'bold'))
+        self.tree.column("#0", width=180)
+        self.tree.column("archivo", width=420)
+        self.tree.column("info", width=350)
+        
+        self.tree.tag_configure('nuevo', foreground='#2e7d32')
         self.tree.tag_configure('actualizar', foreground='#1565c0')
         self.tree.pack(pady=10, padx=15, fill=tk.BOTH, expand=True)
-
-        # Menu contextual
-        self.menu_contextual = tk.Menu(self.root, tearoff=0)
-        self.menu_contextual.add_command(label="Abrir carpeta contenedora", command=self.abrir_carpeta_archivo)
-        self.tree.bind("<Button-3>", self.mostrar_menu)
-        self.tree.bind("<Button-2>", self.mostrar_menu)
+        
+        self.tree.bind("<Double-1>", self.abrir_ubicacion)
 
         # --- Footer ---
-        f_footer = tk.Frame(root, pady=10)
-        f_footer.pack(fill="x")
+        f_foot = tk.Frame(root, pady=15)
+        f_foot.pack(fill="x")
         
-        f_botones = tk.Frame(f_footer)
-        f_botones.pack()
+        tk.Button(f_foot, text="SINCRONIZAR (COPIAR)", command=self.sincronizar, bg="#007bff", fg="white", width=25, height=2, font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=60)
+        tk.Button(f_foot, text="BORRAR ORIGINALES", command=self.borrar, bg="#dc3545", fg="white", width=25, height=2, font=("Arial", 10, "bold")).pack(side=tk.RIGHT, padx=60)
 
-        self.btn_sync = tk.Button(f_botones, text="SINCRONIZAR", command=self.iniciar_sincronizacion, 
-                                 bg="#007bff", fg="white", state="disabled", font=('Arial', 10, 'bold'), height=2, width=20)
-        self.btn_sync.pack(side=tk.LEFT, padx=5)
+    def elegir(self, var):
+        d = filedialog.askdirectory()
+        if d: var.set(os.path.normpath(d))
 
-        self.btn_del = tk.Button(f_botones, text="BORRAR", command=self.iniciar_borrado, 
-                                bg="#dc3545", fg="white", state="disabled", font=('Arial', 10, 'bold'), height=2, width=20)
-        self.btn_del.pack(side=tk.LEFT, padx=5)
+    def formar_fecha(self, ts):
+        return datetime.fromtimestamp(ts).strftime('%d/%m/%y %H:%M')
 
-        self.progress = ttk.Progressbar(f_footer, orient="horizontal", length=600, mode="determinate")
-        self.progress.pack(pady=10)
-        self.lbl_status = tk.Label(f_footer, text="Listo.", fg="#666")
-        self.lbl_status.pack()
+    def seleccionar_todo(self):
+        hijos = []
+        for p in self.tree.get_children():
+            hijos.extend(self.tree.get_children(p))
+        self.tree.selection_set(tuple(hijos) + tuple(self.tree.get_children()))
 
-    def seleccionar(self, var):
-        r = filedialog.askdirectory()
-        if r: var.set(r)
+    def deseleccionar(self):
+        self.tree.selection_remove(self.tree.selection())
 
-    def mostrar_menu(self, event):
+    def abrir_ubicacion(self, event):
         item = self.tree.identify_row(event.y)
-        if item:
-            self.tree.selection_set(item)
-            self.menu_contextual.post(event.x_root, event.y_root)
+        if item and item.isdigit():
+            ruta_orig = self.lista_datos[int(item)][3]
+            carpeta = os.path.dirname(ruta_orig)
+            if platform.system() == "Windows": os.startfile(carpeta)
+            else: subprocess.Popen(["open", carpeta])
 
-    def abrir_carpeta_archivo(self):
-        seleccion = self.tree.selection()
-        if not seleccion or not seleccion[0].isdigit(): return
-        ruta_completa = self.items_analizados[int(seleccion[0])][4]
-        carpeta = ruta_completa.parent
-        if platform.system() == "Windows": os.startfile(carpeta)
-        elif platform.system() == "Darwin": subprocess.Popen(["open", str(carpeta)])
-        else: subprocess.Popen(["xdg-open", str(carpeta)])
+    def analizar(self):
+        da, db = self.ruta_a.get().strip(), self.ruta_b.get().strip()
+        if not da or not db: return
 
-    def invertir_seleccion(self):
-        todos = [i for i in self.tree.get_children() if i.isdigit()]
-        actuales = self.tree.selection()
-        nuevos = [i for i in todos if i not in actuales]
-        self.tree.selection_set(nuevos)
-
-    def iniciar_analisis(self):
-        if not self.ruta_a.get() or not self.ruta_b.get():
-            messagebox.showwarning("Error", "Selecciona ambas carpetas.")
-            return
-        self.btn_ana.config(state="disabled")
-        threading.Thread(target=self.hilo_analizar, daemon=True).start()
-
-    def hilo_analizar(self):
-        self.items_analizados = []
-        pa, pb = Path(self.ruta_a.get()), Path(self.ruta_b.get())
-        def scan(p):
-            return {f.relative_to(p): f for f in p.rglob('*') if f.is_file() and not any(part.startswith('.') for part in f.parts)}
-        try:
-            items_a, items_b = scan(pa), scan(pb)
-            todos = sorted(set(items_a.keys()) | set(items_b.keys()))
-            for rel in todos:
-                f_a, f_b = items_a.get(rel), items_b.get(rel)
-                if f_a and f_b:
-                    ma, mb = f_a.stat().st_mtime, f_b.stat().st_mtime
-                    if abs(ma - mb) > 2:
-                        if ma > mb: self.items_analizados.append((3, "Actualizar B", str(rel), f"A es mas nuevo", f_a, pb/rel, 'actualizar'))
-                        else: self.items_analizados.append((4, "Actualizar A", str(rel), f"B es mas nuevo", f_b, pa/rel, 'actualizar'))
-                elif f_a: self.items_analizados.append((1, "Solo en A", str(rel), "Copia a B", f_a, pb/rel, 'nuevo'))
-                else: self.items_analizados.append((2, "Solo en B", str(rel), "Copia a A", f_b, pa/rel, 'nuevo'))
-        except Exception as e:
-            self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
-        self.root.after(0, self.finalizar_analisis)
-
-    def fmt(self, ts): return datetime.fromtimestamp(ts).strftime('%d/%m/%y %H:%M')
-    def finalizar_analisis(self):
-        self.btn_ana.config(state="normal"); self.refrescar_tabla()
-
-    def refrescar_tabla(self):
         self.tree.delete(*self.tree.get_children())
-        filtro = self.filtro_var.get().lower()
-        padres = {}
-        for idx, (peso, cat, archivo, det, orig, dest, tag) in enumerate(self.items_analizados):
-            if filtro in archivo.lower() or filtro in cat.lower():
-                if cat not in padres: padres[cat] = self.tree.insert("", tk.END, text=cat, open=True)
-                self.tree.insert(padres[cat], tk.END, iid=idx, text=" [ ]", values=(archivo, det), tags=(tag,))
-        st = "normal" if self.items_analizados else "disabled"
-        self.btn_sync.config(state=st); self.btn_del.config(state=st)
+        self.lista_datos = []
+        
+        try:
+            pa, pb = Path(da), Path(db)
+            dict_a = {f.relative_to(pa): f for f in pa.rglob('*') if f.is_file()}
+            dict_b = {f.relative_to(pb): f for f in pb.rglob('*') if f.is_file()}
+            
+            todos = sorted(set(dict_a.keys()) | set(dict_b.keys()))
+            padres = {}
 
-    def iniciar_sincronizacion(self):
+            for rel in todos:
+                fa, fb = dict_a.get(rel), dict_b.get(rel)
+                res = None
+                
+                if fa and fb:
+                    ma, mb = fa.stat().st_mtime, fb.stat().st_mtime
+                    if abs(ma - mb) > 2:
+                        txt_fecha = f"A: {self.formar_fecha(ma)} | B: {self.formar_fecha(mb)}"
+                        if ma > mb: res = ("Actualizar en B", str(rel), f"Nuevo en A -> {txt_fecha}", fa, pb/rel, 'actualizar')
+                        else: res = ("Actualizar en A", str(rel), f"Nuevo en B -> {txt_fecha}", fb, pa/rel, 'actualizar')
+                elif fa:
+                    res = ("Solo en A (Copiar a B)", str(rel), "No existe en destino B", fa, pb/rel, 'nuevo')
+                else:
+                    res = ("Solo en B (Copiar a A)", str(rel), "No existe en destino A", fb, pa/rel, 'nuevo')
+
+                if res:
+                    cat = res[0]
+                    if cat not in padres:
+                        padres[cat] = self.tree.insert("", tk.END, text=cat, open=True)
+                    
+                    idx = len(self.lista_datos)
+                    self.lista_datos.append(res)
+                    self.tree.insert(padres[cat], tk.END, iid=str(idx), text=" 📄 ", values=(res[1], res[2]), tags=(res[5],))
+
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+    def sincronizar(self):
         sel = [s for s in self.tree.selection() if s.isdigit()]
         if not sel: return
-        if messagebox.askyesno("Confirmar", "Sincronizar seleccionados?"):
-            lista = [self.items_analizados[int(idx)] for idx in sel]
-            self.progress['maximum'] = len(lista)
-            threading.Thread(target=self.hilo_sincronizar, args=(lista,), daemon=True).start()
-
-    def hilo_sincronizar(self, lista):
-        for i, (_, _, _, _, orig, dest, _) in enumerate(lista):
-            try:
-                dest.parent.mkdir(parents=True, exist_ok=True)
+        if messagebox.askyesno("Confirmar", f"¿Copiar {len(sel)} archivos?"):
+            for iid in sel:
+                _, _, _, orig, dest, _ = self.lista_datos[int(iid)]
+                os.makedirs(dest.parent, exist_ok=True)
                 shutil.copy2(orig, dest)
-                self.root.after(0, lambda v=i+1: self.actualizar_progreso(v, len(lista), "Copiando"))
-            except: pass
-        self.root.after(0, self.iniciar_analisis)
+            messagebox.showinfo("Hecho", "Copiado correctamente.")
+            self.analizar()
 
-    def iniciar_borrado(self):
+    def borrar(self):
         sel = [s for s in self.tree.selection() if s.isdigit()]
         if not sel: return
-        if messagebox.askyesno("PELIGRO", "Borrar archivos originales?"):
-            lista = [self.items_analizados[int(idx)] for idx in sel]
-            self.progress['maximum'] = len(lista)
-            threading.Thread(target=self.hilo_borrar, args=(lista,), daemon=True).start()
-
-    def hilo_borrar(self, lista):
-        for i, (_, _, _, _, orig, _, _) in enumerate(lista):
-            try:
-                if orig.exists(): os.remove(orig)
-                self.root.after(0, lambda v=i+1: self.actualizar_progreso(v, len(lista), "Borrando"))
-            except: pass
-        self.root.after(0, self.iniciar_analisis)
-
-    def actualizar_progreso(self, v, t, texto):
-        self.progress['value'] = v
-        self.lbl_status.config(text=f"{texto}: {v}/{t}")
+        if messagebox.askyesno("PELIGRO", f"¿BORRAR {len(sel)} archivos originales?"):
+            for iid in sel:
+                _, _, _, orig, _, _ = self.lista_datos[int(iid)]
+                if os.path.exists(orig): os.remove(orig)
+            messagebox.showinfo("Hecho", "Archivos borrados.")
+            self.analizar()
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = SincronizadorUltra(root)
+    app = SincronizadorConFechas(root)
     root.mainloop()
