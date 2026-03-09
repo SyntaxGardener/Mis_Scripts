@@ -27,12 +27,14 @@ def leer_favoritos():
         try:
             with open(FAV_FILE, "r", encoding="utf-8") as f:
                 return [line.strip() for line in f.readlines()]
-        except: return []
+        except: 
+            return []
     return []
 
 def guardar_favoritos(favoritos):
     with open(FAV_FILE, "w", encoding="utf-8") as f:
-        for fav in favoritos: f.write(f"{fav}\n")
+        for fav in favoritos: 
+            f.write(f"{fav}\n")
 
 def obtener_info_sistema():
     v_python = f"Py {sys.version_info.major}.{sys.version_info.minor}"
@@ -127,7 +129,7 @@ class MenuFinalPerfecto:
         
         self.actualizar_barra_estado()
 
-        # --- 4. CONTENEDOR ---
+        # --- 4. CONTENEDOR CON SCROLL ---
         self.container = tk.Frame(self.root, bg="#181818")
         self.container.pack(fill="both", expand=True, padx=20, pady=(0, 20))
         self.canvas = tk.Canvas(self.container, bg="#181818", highlightthickness=0)
@@ -144,76 +146,169 @@ class MenuFinalPerfecto:
         self.cargar_scripts()
         threading.Thread(target=self.comprobar_git_status, daemon=True).start()
 
-    # --- LÓGICA DE GIT BLINDADA ---
+    # --- FUNCIONES DE GIT MEJORADAS ---
     def obtener_comando_git(self):
+        """Busca git.exe en la ubicación exacta donde lo tienes"""
         ruta_base = os.path.dirname(os.path.abspath(__file__))
-        posibles = [
-            os.path.join(ruta_base, "git", "bin", "git.exe"),
-            os.path.join(ruta_base, "GitParaWindows", "bin", "git.exe"),
-            os.path.join(ruta_base, "PortableGit", "bin", "git.exe"),
-            os.path.join(ruta_base, "bin", "git.exe")
-        ]
-        for r in posibles:
-            if os.path.exists(r): return r
+        
+        # 1. TU RUTA EXACTA (la que funciona en CMD)
+        tu_git = r"C:\Users\User\Downloads\TRABAJO_PORTABLE\PortableGit\bin\git.exe"
+        if os.path.exists(tu_git):
+            return tu_git
+        
+        # 2. Buscar en PortableGit dentro de la carpeta actual
+        portable_git = os.path.join(ruta_base, "PortableGit", "bin", "git.exe")
+        if os.path.exists(portable_git):
+            return portable_git
+        
+        # 3. Si no encuentra nada, devuelve "git"
         return "git"
 
     def comprobar_git_status(self):
-        cmd = self.obtener_comando_git()
-        cwd = os.path.dirname(os.path.abspath(__file__))
+        """Comprueba el estado de Git y actualiza la interfaz"""
         try:
-            # Reparación automática de seguridad por cambio de PC/Unidad
-            subprocess.run([cmd, "config", "--global", "--add", "safe.directory", "*"], creationflags=subprocess.CREATE_NO_WINDOW)
+            cmd = self.obtener_comando_git()
+            cwd = os.path.dirname(os.path.abspath(__file__))
             
-            subprocess.run([cmd, "fetch"], cwd=cwd, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
-            cambios_locales = subprocess.check_output([cmd, "status", "--porcelain"], cwd=cwd, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
-            res_comp = subprocess.check_output([cmd, "rev-list", "--left-right", "--count", "main...origin/main"], cwd=cwd, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
-            atras, adelante = res_comp.split('\t')
-
-            if cambios_locales:
-                self.lbl_git.config(text="⚠️ CAMBIOS LOCALES DETECTADOS", fg="#ff8c00")
-                self.btn_push.config(bg="#ff8c00", fg="black", state="normal")
-                self.btn_pull.config(bg="#333333", fg="white", state="disabled")
-            elif int(adelante) > 0:
-                self.lbl_git.config(text=f"🚀 {adelante} ACTUALIZACIONES EN NUBE", fg="#ffff00")
-                self.btn_pull.config(bg="#3498db", fg="white", state="normal")
-                self.btn_push.config(bg="#333333", fg="white", state="disabled")
-            elif int(atras) > 0:
-                self.lbl_git.config(text="⬆️ PENDIENTE DE SUBIR", fg="#2ecc71")
-                self.btn_push.config(bg="#2ecc71", fg="black", state="normal")
-                self.btn_pull.config(bg="#333333", fg="white", state="disabled")
-            else:
-                self.lbl_git.config(text="✅ TODO AL DÍA", fg="#00ff00")
-                self.btn_push.config(bg="#333333", fg="white", state="disabled")
-                self.btn_pull.config(bg="#333333", fg="white", state="disabled")
-        except:
-            self.lbl_git.config(text="❌ GIT NO DETECTADO", fg="#ff4d4d")
+            # Verificar si el comando git existe
+            try:
+                version = subprocess.run([cmd, "--version"], 
+                                        capture_output=True, 
+                                        text=True,
+                                        creationflags=subprocess.CREATE_NO_WINDOW)
+                
+                if version.returncode != 0:
+                    self.root.after(0, lambda: self.lbl_git.config(
+                        text="❌ GIT NO DISPONIBLE", fg="#ff4d4d"))
+                    return
+            except:
+                self.root.after(0, lambda: self.lbl_git.config(
+                    text="❌ GIT NO INSTALADO", fg="#ff4d4d"))
+                return
+            
+            # Verificar si estamos en un repositorio
+            try:
+                subprocess.run([cmd, "rev-parse", "--git-dir"], 
+                              cwd=cwd, 
+                              capture_output=True,
+                              creationflags=subprocess.CREATE_NO_WINDOW,
+                              check=True)
+            except:
+                self.root.after(0, lambda: self.lbl_git.config(
+                    text="📁 NO ES REPOSITORIO", fg="#aaaaaa"))
+                return
+            
+            # Si llegamos aquí, estamos en un repositorio Git
+            try:
+                # safe.directory
+                subprocess.run([cmd, "config", "--global", "--add", "safe.directory", cwd], 
+                              creationflags=subprocess.CREATE_NO_WINDOW,
+                              capture_output=True)
+                
+                # Fetch
+                subprocess.run([cmd, "fetch"], cwd=cwd, 
+                              capture_output=True, 
+                              creationflags=subprocess.CREATE_NO_WINDOW)
+                
+                # Verificar cambios locales
+                cambios_locales = subprocess.check_output(
+                    [cmd, "status", "--porcelain"], 
+                    cwd=cwd, 
+                    text=True, 
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                ).strip()
+                
+                # Comparar con remoto (intentar con main primero)
+                try:
+                    res_comp = subprocess.check_output(
+                        [cmd, "rev-list", "--left-right", "--count", "main...origin/main"], 
+                        cwd=cwd, 
+                        text=True, 
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    ).strip()
+                    atras, adelante = res_comp.split('\t')
+                except:
+                    try:
+                        res_comp = subprocess.check_output(
+                            [cmd, "rev-list", "--left-right", "--count", "master...origin/master"], 
+                            cwd=cwd, 
+                            text=True, 
+                            creationflags=subprocess.CREATE_NO_WINDOW
+                        ).strip()
+                        atras, adelante = res_comp.split('\t')
+                    except:
+                        atras, adelante = "0", "0"
+                
+                # Actualizar interfaz
+                if cambios_locales:
+                    self.root.after(0, lambda: self.lbl_git.config(
+                        text="⚠️ CAMBIOS LOCALES", fg="#ff8c00"))
+                    self.root.after(0, lambda: self.btn_push.config(
+                        bg="#ff8c00", fg="black", state="normal"))
+                    self.root.after(0, lambda: self.btn_pull.config(
+                        bg="#333333", fg="white", state="disabled"))
+                elif int(adelante) > 0:
+                    self.root.after(0, lambda: self.lbl_git.config(
+                        text=f"🚀 {adelante} ACTUALIZACIONES", fg="#ffff00"))
+                    self.root.after(0, lambda: self.btn_pull.config(
+                        bg="#3498db", fg="white", state="normal"))
+                    self.root.after(0, lambda: self.btn_push.config(
+                        bg="#333333", fg="white", state="disabled"))
+                elif int(atras) > 0:
+                    self.root.after(0, lambda: self.lbl_git.config(
+                        text="⬆️ PENDIENTE SUBIR", fg="#2ecc71"))
+                    self.root.after(0, lambda: self.btn_push.config(
+                        bg="#2ecc71", fg="black", state="normal"))
+                    self.root.after(0, lambda: self.btn_pull.config(
+                        bg="#333333", fg="white", state="disabled"))
+                else:
+                    self.root.after(0, lambda: self.lbl_git.config(
+                        text="✅ TODO AL DÍA", fg="#00ff00"))
+                    self.root.after(0, lambda: self.btn_push.config(
+                        bg="#333333", fg="white", state="disabled"))
+                    self.root.after(0, lambda: self.btn_pull.config(
+                        bg="#333333", fg="white", state="disabled"))
+                        
+            except Exception as e:
+                self.root.after(0, lambda: self.lbl_git.config(
+                    text="⚠️ ERROR GIT", fg="#ff4d4d"))
+                
+        except Exception as e:
+            self.root.after(0, lambda: self.lbl_git.config(
+                text="❌ ERROR CRÍTICO", fg="#ff4d4d"))
 
     def realizar_push(self):
+        """Sube cambios a GitHub"""
         cmd = self.obtener_comando_git()
         cwd = os.path.dirname(os.path.abspath(__file__))
-        subprocess.run([cmd, "config", "--global", "--add", "safe.directory", "*"], creationflags=subprocess.CREATE_NO_WINDOW)
         
-        mensaje = simpledialog.askstring("Git Push", "Nombre del cambio (Commit):", parent=self.root)
+        mensaje = simpledialog.askstring("Git Push", "¿Qué cambios hiciste? (mensaje del commit):", parent=self.root)
         if mensaje:
             try:
-                subprocess.run([cmd, "add", "."], cwd=cwd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                subprocess.run([cmd, "commit", "-m", mensaje], cwd=cwd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                subprocess.run([cmd, "push"], cwd=cwd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                messagebox.showinfo("Éxito", "¡Subido a GitHub correctamente!")
+                subprocess.run([cmd, "add", "."], cwd=cwd, check=True, 
+                             creationflags=subprocess.CREATE_NO_WINDOW)
+                subprocess.run([cmd, "commit", "-m", mensaje], cwd=cwd, check=True, 
+                             creationflags=subprocess.CREATE_NO_WINDOW)
+                subprocess.run([cmd, "push"], cwd=cwd, check=True, 
+                             creationflags=subprocess.CREATE_NO_WINDOW)
+                messagebox.showinfo("Éxito", "¡Cambios subidos a GitHub correctamente!")
                 self.actualizar_todo()
-            except Exception as e: messagebox.showerror("Error", f"Fallo al subir:\n{e}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Fallo al subir cambios:\n{e}")
 
     def realizar_pull(self):
+        """Descarga cambios de GitHub"""
         cmd = self.obtener_comando_git()
         cwd = os.path.dirname(os.path.abspath(__file__))
-        subprocess.run([cmd, "config", "--global", "--add", "safe.directory", "*"], creationflags=subprocess.CREATE_NO_WINDOW)
         
-        if messagebox.askyesno("Git Pull", "¿Descargar cambios de GitHub?"):
+        if messagebox.askyesno("Git Pull", "¿Descargar los últimos cambios de GitHub?"):
             try:
-                subprocess.run([cmd, "pull"], cwd=cwd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                messagebox.showinfo("Éxito", "¡Archivos actualizados!")
+                subprocess.run([cmd, "pull"], cwd=cwd, check=True, 
+                             creationflags=subprocess.CREATE_NO_WINDOW)
+                messagebox.showinfo("Éxito", "¡Archivos actualizados correctamente!")
                 self.actualizar_todo()
-            except Exception as e: messagebox.showerror("Error", f"Fallo al bajar:\n{e}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Fallo al descargar:\n{e}")
 
     # --- MÉTODOS DE INTERFAZ ---
     def actualizar_barra_estado(self):
@@ -224,7 +319,7 @@ class MenuFinalPerfecto:
     def actualizar_todo(self):
         self.actualizar_barra_estado()
         self.cargar_scripts()
-        self.lbl_git.config(text="Buscando...", fg="#00ffff")
+        self.lbl_git.config(text="Git: Buscando...", fg="#00ffff")
         threading.Thread(target=self.comprobar_git_status, daemon=True).start()
 
     def _on_mousewheel(self, event):
@@ -232,42 +327,64 @@ class MenuFinalPerfecto:
 
     def clasificar(self, nombre):
         n = nombre.lower()
-        if nombre in self.favoritos: return "FAVORITOS"
-        if any(x in n for x in ["expulsar", "pc", "test", "usb", "imports", "limpieza", "borrar", "temp", "organizador"]): return "SISTEMA"
-        if "pdf" in n: return "PDF"
-        if any(x in n for x in ["examenes", "notas"]): return "CLASES"
-        if any(x in n for x in ["horario", "diligencia", "certificados", "calculador", "diplomas"]): return "ADMINISTRACIÓN"
-        if any(x in n for x in ["bingo", "crono", "traductor", "pasapalabra", "picker", "clase", "qr", "juego"]): return "AULA"
+        if nombre in self.favoritos: 
+            return "FAVORITOS"
+        if any(x in n for x in ["expulsar", "pc", "test", "usb", "imports", "limpieza", "borrar", "temp", "organizador"]): 
+            return "SISTEMA"
+        if "pdf" in n: 
+            return "PDF"
+        if any(x in n for x in ["examenes", "notas"]): 
+            return "CLASES"
+        if any(x in n for x in ["horario", "diligencia", "certificados", "calculador", "diplomas"]): 
+            return "ADMINISTRACIÓN"
+        if any(x in n for x in ["bingo", "crono", "traductor", "pasapalabra", "picker", "clase", "qr", "juego"]): 
+            return "AULA"
         return "OTROS"
 
     def cargar_scripts(self):
-        for widget in self.scrollable_frame.winfo_children(): widget.destroy()
+        for widget in self.scrollable_frame.winfo_children(): 
+            widget.destroy()
+            
         termino = self.entry_busqueda.get().lower()
-        if termino == "buscar...": termino = ""
+        if termino == "buscar...": 
+            termino = ""
+            
         ruta_base = os.path.dirname(os.path.abspath(__file__))
         ignorar = [os.path.basename(__file__), "lanzador.bat", "iniciar.vbs", "favoritos.txt"]
+        
         try:
             archivos = [f for f in os.listdir(ruta_base) if f.lower().endswith(('.py', '.bat', '.pyw')) and f not in ignorar]
-        except: return
+        except: 
+            return
+            
         mapeo = {os.path.splitext(f)[0]: f for f in archivos}
         cats = {cat: [] for cat in COLORES.keys()}
+        
         for f in mapeo.values():
-            if termino and termino not in f.lower(): continue
+            if termino and termino not in f.lower(): 
+                continue
             cats[self.clasificar(f)].append(f)
+            
         fila = 0
         self.scrollable_frame.grid_columnconfigure((0, 1), weight=1)
+        
         for cat, lista in cats.items():
-            if not lista: continue
+            if not lista: 
+                continue
+                
             abierta = True if termino else self.estados_carpetas.get(cat, False)
-            tk.Button(self.scrollable_frame, text=f"  {'📂' if abierta else '📁'}  {cat}  [{len(lista)}]", 
+            btn_carpeta = tk.Button(self.scrollable_frame, text=f"  {'📂' if abierta else '📁'}  {cat}  [{len(lista)}]", 
                       font=("Segoe UI", 11, "bold"), bg="#1f1f1f", fg=COLORES[cat], relief="flat", anchor="w",
-                      command=lambda c=cat: self.toggle_carpeta(c)).grid(row=fila, column=0, columnspan=2, sticky="ew", pady=(10, 2))
+                      command=lambda c=cat: self.toggle_carpeta(c))
+            btn_carpeta.grid(row=fila, column=0, columnspan=2, sticky="ew", pady=(10, 2))
             fila += 1
+            
             if abierta:
                 for i, f in enumerate(sorted(lista)):
                     r, c = fila + (i // 2), i % 2
                     self.crear_boton(os.path.join(ruta_base, f), r, c, COLORES[cat])
                 fila += (len(lista) + 1) // 2
+                
         tk.Frame(self.scrollable_frame, height=50, bg="#181818").grid(row=fila, column=0)
 
     def crear_boton(self, ruta, f, c, col):
@@ -281,14 +398,18 @@ class MenuFinalPerfecto:
         self.estados_carpetas[cat] = not self.estados_carpetas[cat]
         self.cargar_scripts()
 
-    def filtrar_scripts(self, e): self.cargar_scripts()
+    def filtrar_scripts(self, e): 
+        self.cargar_scripts()
 
     def toggle_favorito(self, n):
-        if n in self.favoritos: self.favoritos.remove(n)
-        else: self.favoritos.append(n)
+        if n in self.favoritos: 
+            self.favoritos.remove(n)
+        else: 
+            self.favoritos.append(n)
         guardar_favoritos(self.favoritos)
         self.cargar_scripts()
 
+# --- INICIAR LA APLICACIÓN ---
 if __name__ == "__main__":
     root = tk.Tk()
     app = MenuFinalPerfecto(root)
