@@ -67,7 +67,7 @@ def ejecutar_herramienta(ruta_archivo, ventana_principal):
 class MenuFinalPerfecto:
     def __init__(self, root):
         self.root = root
-        self.root.title("BIBLIOTECA DE HERRAMIENTAS - PORTABLE GIT SYNC  (by Raquel)")
+        self.root.title("BIBLIOTECA DE HERRAMIENTAS - PORTABLE GIT SYNC")
         ancho = 800
         alto = 800
         pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
@@ -160,19 +160,36 @@ class MenuFinalPerfecto:
     def comprobar_git_status(self):
         try:
             cmd = self.obtener_comando_git()
-            # Soluciona error de propiedad dudosa en diferentes PCs
+            # 1. Configurar safe directory
             subprocess.run([cmd, "config", "--global", "safe.directory", "*"], creationflags=subprocess.CREATE_NO_WINDOW)
             
-            cambios = subprocess.check_output([cmd, "status", "--porcelain"], cwd=self.base_dir, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
+            # 2. TRAER INFO DEL SERVIDOR (FETCH) - Esto es lo que te faltaba
+            # Usamos las credenciales guardadas en el USB
+            subprocess.run([cmd, "config", "credential.helper", f"store --file {self.ruta_creds}"], cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
+            subprocess.run([cmd, "fetch"], cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
+
+            # 3. VER CAMBIOS LOCALES (lo que ya tenías)
+            cambios_locales = subprocess.check_output([cmd, "status", "--porcelain"], cwd=self.base_dir, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
             
-            if cambios:
-                self.root.after(0, lambda: self.lbl_git.config(text="⚠️ CAMBIOS LOCALES", fg="#ff8c00"))
+            # 4. VER SI ESTAMOS ATRASADOS (Cambios en el servidor)
+            # Compara la rama local con la remota (suponiendo que es 'main')
+            status_remoto = subprocess.check_output([cmd, "rev-list", "HEAD..origin/main", "--count"], cwd=self.base_dir, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
+            atrasado = int(status_remoto) if status_remoto.isdigit() else 0
+
+            # --- LÓGICA DE ETIQUETAS ---
+            if cambios_locales:
+                self.root.after(0, lambda: self.lbl_git.config(text="⚠️ CAMBIOS LOCALES PENDIENTES", fg="#ff8c00"))
                 self.root.after(0, lambda: self.btn_push.config(bg="#ff8c00", fg="black", state="normal"))
+            elif atrasado > 0:
+                self.root.after(0, lambda: self.lbl_git.config(text=f"📥 {atrasado} CAMBIOS EN NUBE (DESCARGA)", fg="#00ffff"))
+                self.root.after(0, lambda: self.btn_push.config(bg="#333333", fg="white", state="disabled"))
             else:
                 self.root.after(0, lambda: self.lbl_git.config(text="✅ REPOSITORIO SINCRONIZADO", fg="#00ff00"))
                 self.root.after(0, lambda: self.btn_push.config(bg="#333333", fg="white", state="disabled"))
-        except:
-            self.root.after(0, lambda: self.lbl_git.config(text="❌ ERROR GIT", fg="#ff4d4d"))
+            
+        except Exception as e:
+            print(f"Error Git: {e}")
+            self.root.after(0, lambda: self.lbl_git.config(text="❌ ERROR AL SINCRONIZAR", fg="#ff4d4d"))
 
     def realizar_push(self):
         cmd = self.obtener_comando_git()
