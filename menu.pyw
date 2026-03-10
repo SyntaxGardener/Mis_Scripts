@@ -205,25 +205,14 @@ class MenuFinalPerfecto:
             self.root.after(0, lambda: self.lbl_git.config(text="❌ ERROR DE INICIO", fg="#ff4d4d"))
 
 def realizar_push(self):
-        """Función completa para subir cambios al 100% portable"""
-        cmd = self.obtener_comando_git()
-        cwd = os.path.dirname(os.path.abspath(__file__))
-        
-        # 1. RUTA DE CONFIGURACIÓN PORTABLE
-        # Guardamos las llaves de GitHub en la carpeta Config del USB
-        ruta_creds = os.path.normpath(os.path.join(cwd, "..", "Config", ".git-credentials")).replace("\\", "/")
-        
-        try:
-            # 2. CONFIGURAR IDENTIDAD (Evita error 128 de autor)
-            subprocess.run([cmd, "config", "user.email", "tu_correo@ejemplo.com"], 
-                          cwd=cwd, creationflags=subprocess.CREATE_NO_WINDOW)
-            subprocess.run([cmd, "config", "user.name", "SyntaxGardener"], 
-                          cwd=cwd, creationflags=subprocess.CREATE_NO_WINDOW)
-            
-            # 3. CONFIGURAR CREDENCIALES (Evita error 128 de autenticación)
-            subprocess.run([cmd, "config", "credential.helper", f"store --file {ruta_creds}"], 
-                          cwd=cwd, creationflags=subprocess.CREATE_NO_WINDOW)
-
+    cmd = self.obtener_comando_git()
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    # Apuntamos a la llave que acabas de crear en el USB
+    ruta_creds = os.path.normpath(os.path.join(cwd, "..", "Config", ".git-credentials")).replace("\\", "/")
+    
+    # Configuramos el helper para que el menú sepa dónde leer la llave
+    subprocess.run([cmd, "config", "credential.helper", f"store --file {ruta_creds}"], 
+                  cwd=cwd, creationflags=subprocess.CREATE_NO_WINDOW)
             # 4. PROCESO DE SUBIDA
             # Añadir todo, hacer commit y subir
             subprocess.run([cmd, "add", "."], cwd=cwd, creationflags=subprocess.CREATE_NO_WINDOW)
