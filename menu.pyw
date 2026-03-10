@@ -169,7 +169,13 @@ class MenuFinalPerfecto:
         return "git"
 
     def comprobar_git_status(self):
-        """Detección ultra-compatible para los 3 portátiles"""
+        # Dentro de comprobar_git_status, después de mirar los cambios:
+        if cambios:
+            self.lbl_git.config(text="⚠️ CAMBIOS LOCALES", fg="#ff8c00")
+            self.btn_push.config(state="normal", bg="#ff8c00") # Activar naranja
+        else:
+            self.lbl_git.config(text="✅ REPOSITORIO SINCRONIZADO", fg="#00ff00")
+            self.btn_push.config(state="disabled", bg="#333333") # Desactivar / Gris"""Detección ultra-compatible para los 3 portátiles"""
         try:
             cmd = self.obtener_comando_git()
             cwd = os.path.dirname(os.path.abspath(__file__))
