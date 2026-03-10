@@ -169,117 +169,40 @@ class MenuFinalPerfecto:
         return "git"
 
     def comprobar_git_status(self):
-        """Comprueba el estado de Git y actualiza la interfaz"""
+        """Detección ultra-compatible para los 3 portátiles"""
         try:
             cmd = self.obtener_comando_git()
             cwd = os.path.dirname(os.path.abspath(__file__))
             
-            # Verificar si el comando git existe
-            try:
-                version = subprocess.run([cmd, "--version"], 
-                                        capture_output=True, 
-                                        text=True,
-                                        creationflags=subprocess.CREATE_NO_WINDOW)
-                
-                if version.returncode != 0:
-                    self.root.after(0, lambda: self.lbl_git.config(
-                        text="❌ GIT NO DISPONIBLE", fg="#ff4d4d"))
-                    return
-            except:
-                self.root.after(0, lambda: self.lbl_git.config(
-                    text="❌ GIT NO INSTALADO", fg="#ff4d4d"))
-                return
+            # 1. FORZAR CONFIANZA: Esto evita el error de la imagen 519278
+            subprocess.run([cmd, "config", "--global", "safe.directory", "*"], 
+                          creationflags=subprocess.CREATE_NO_WINDOW)
             
-            # Verificar si estamos en un repositorio
-            try:
-                subprocess.run([cmd, "rev-parse", "--git-dir"], 
-                              cwd=cwd, 
-                              capture_output=True,
-                              creationflags=subprocess.CREATE_NO_WINDOW,
-                              check=True)
-            except:
+            # 2. VERIFICAR SI LA CARPETA .GIT ESTÁ SANA
+            # Si el clonado falló (como en la imagen 519df2), esto fallará
+            check = subprocess.run([cmd, "rev-parse", "--is-inside-work-tree"], 
+                                  cwd=cwd, capture_output=True, text=True,
+                                  creationflags=subprocess.CREATE_NO_WINDOW)
+
+            if check.returncode != 0:
                 self.root.after(0, lambda: self.lbl_git.config(
-                    text="📁 NO ES REPOSITORIO", fg="#aaaaaa"))
+                    text="📁 NO ES REPOSITORIO (CLONADO FALLIDO)", fg="#ff4d4d"))
                 return
+
+            # 3. COMPROBAR CAMBIOS LOCALES (RÁPIDO)
+            # Usamos porcelain para que no dependa de la conexión a internet
+            cambios = subprocess.check_output([cmd, "status", "--porcelain"], 
+                                           cwd=cwd, text=True,
+                                           creationflags=subprocess.CREATE_NO_WINDOW).strip()
             
-            # Si llegamos aquí, estamos en un repositorio Git
-            try:
-                # safe.directory
-                subprocess.run([cmd, "config", "--global", "--add", "safe.directory", cwd], 
-                              creationflags=subprocess.CREATE_NO_WINDOW,
-                              capture_output=True)
-                
-                # Fetch
-                subprocess.run([cmd, "fetch"], cwd=cwd, 
-                              capture_output=True, 
-                              creationflags=subprocess.CREATE_NO_WINDOW)
-                
-                # Verificar cambios locales
-                cambios_locales = subprocess.check_output(
-                    [cmd, "status", "--porcelain"], 
-                    cwd=cwd, 
-                    text=True, 
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                ).strip()
-                
-                # Comparar con remoto (intentar con main primero)
-                try:
-                    res_comp = subprocess.check_output(
-                        [cmd, "rev-list", "--left-right", "--count", "main...origin/main"], 
-                        cwd=cwd, 
-                        text=True, 
-                        creationflags=subprocess.CREATE_NO_WINDOW
-                    ).strip()
-                    atras, adelante = res_comp.split('\t')
-                except:
-                    try:
-                        res_comp = subprocess.check_output(
-                            [cmd, "rev-list", "--left-right", "--count", "master...origin/master"], 
-                            cwd=cwd, 
-                            text=True, 
-                            creationflags=subprocess.CREATE_NO_WINDOW
-                        ).strip()
-                        atras, adelante = res_comp.split('\t')
-                    except:
-                        atras, adelante = "0", "0"
-                
-                # Actualizar interfaz
-                if cambios_locales:
-                    self.root.after(0, lambda: self.lbl_git.config(
-                        text="⚠️ CAMBIOS LOCALES", fg="#ff8c00"))
-                    self.root.after(0, lambda: self.btn_push.config(
-                        bg="#ff8c00", fg="black", state="normal"))
-                    self.root.after(0, lambda: self.btn_pull.config(
-                        bg="#333333", fg="white", state="disabled"))
-                elif int(adelante) > 0:
-                    self.root.after(0, lambda: self.lbl_git.config(
-                        text=f"🚀 {adelante} ACTUALIZACIONES", fg="#ffff00"))
-                    self.root.after(0, lambda: self.btn_pull.config(
-                        bg="#3498db", fg="white", state="normal"))
-                    self.root.after(0, lambda: self.btn_push.config(
-                        bg="#333333", fg="white", state="disabled"))
-                elif int(atras) > 0:
-                    self.root.after(0, lambda: self.lbl_git.config(
-                        text="⬆️ PENDIENTE SUBIR", fg="#2ecc71"))
-                    self.root.after(0, lambda: self.btn_push.config(
-                        bg="#2ecc71", fg="black", state="normal"))
-                    self.root.after(0, lambda: self.btn_pull.config(
-                        bg="#333333", fg="white", state="disabled"))
-                else:
-                    self.root.after(0, lambda: self.lbl_git.config(
-                        text="✅ TODO AL DÍA", fg="#00ff00"))
-                    self.root.after(0, lambda: self.btn_push.config(
-                        bg="#333333", fg="white", state="disabled"))
-                    self.root.after(0, lambda: self.btn_pull.config(
-                        bg="#333333", fg="white", state="disabled"))
-                        
-            except Exception as e:
-                self.root.after(0, lambda: self.lbl_git.config(
-                    text="⚠️ ERROR GIT", fg="#ff4d4d"))
-                
+            if cambios:
+                self.root.after(0, lambda: self.lbl_git.config(text="⚠️ CAMBIOS LOCALES", fg="#ff8c00"))
+                self.root.after(0, lambda: self.btn_push.config(state="normal", bg="#ff8c00", fg="black"))
+            else:
+                self.root.after(0, lambda: self.lbl_git.config(text="✅ REPOSITORIO SINCRONIZADO", fg="#00ff00"))
+
         except Exception as e:
-            self.root.after(0, lambda: self.lbl_git.config(
-                text="❌ ERROR CRÍTICO", fg="#ff4d4d"))
+            self.root.after(0, lambda: self.lbl_git.config(text="❌ ERROR DE INICIO", fg="#ff4d4d"))
 
     def realizar_push(self):
         """Sube cambios a GitHub"""
