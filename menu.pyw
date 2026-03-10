@@ -236,18 +236,32 @@ def realizar_push(self):
         except Exception as e:
             messagebox.showerror("Error Crítico", f"No se pudo completar la acción:\n{str(e)}")
     def realizar_pull(self):
-        """Descarga cambios de GitHub"""
+        """Descarga cambios de forma segura en los 3 portátiles"""
         cmd = self.obtener_comando_git()
         cwd = os.path.dirname(os.path.abspath(__file__))
-        
-        if messagebox.askyesno("Git Pull", "¿Descargar los últimos cambios de GitHub?"):
-            try:
-                subprocess.run([cmd, "pull"], cwd=cwd, check=True, 
-                             creationflags=subprocess.CREATE_NO_WINDOW)
-                messagebox.showinfo("Éxito", "¡Archivos actualizados correctamente!")
-                self.actualizar_todo()
-            except Exception as e:
-                messagebox.showerror("Error", f"Fallo al descargar:\n{e}")
+        ruta_creds = os.path.normpath(os.path.join(cwd, "..", "Config", ".git-credentials")).replace("\\", "/")
+
+        try:
+            # A. CONFIGURACIÓN PREVIA (Igual que en el Push)
+            subprocess.run([cmd, "config", "safe.directory", "*"], creationflags=subprocess.CREATE_NO_WINDOW)
+            subprocess.run([cmd, "config", "credential.helper", f"store --file {ruta_creds}"], creationflags=subprocess.CREATE_NO_WINDOW)
+            
+            # B. OPTIMIZACIÓN DE RED (Para evitar el error RPC failed / Connection reset)
+            subprocess.run([cmd, "config", "http.postBuffer", "524288000"], creationflags=subprocess.CREATE_NO_WINDOW)
+
+            # C. EJECUTAR DESCARGA
+            resultado = subprocess.run([cmd, "pull", "origin", "main"], 
+                                     cwd=cwd, capture_output=True, text=True,
+                                     creationflags=subprocess.CREATE_NO_WINDOW)
+
+            if resultado.returncode == 0:
+                messagebox.showinfo("Éxito", "¡Scripts actualizados correctamente!")
+                self.comprobar_git_status() # Para que el menú se ponga en verde
+            else:
+                messagebox.showerror("Error en Pull", f"Detalle:\n{resultado.stderr}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo descargar: {str(e)}")
 
     # --- MÉTODOS DE INTERFAZ ---
     def actualizar_barra_estado(self):
