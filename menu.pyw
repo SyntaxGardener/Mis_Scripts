@@ -204,26 +204,48 @@ class MenuFinalPerfecto:
         except Exception as e:
             self.root.after(0, lambda: self.lbl_git.config(text="❌ ERROR DE INICIO", fg="#ff4d4d"))
 
-    def realizar_push(self):
-        """Sube cambios a GitHub"""
+def realizar_push(self):
+        """Función completa para subir cambios al 100% portable"""
         cmd = self.obtener_comando_git()
         cwd = os.path.dirname(os.path.abspath(__file__))
-        subprocess.run([cmd, "config", "user.email", "fenokitie@gmail.com"], creationflags=subprocess.CREATE_NO_WINDOW)
-        subprocess.run([cmd, "config", "user.name", "SyntaxGardener"], creationflags=subprocess.CREATE_NO_WINDOW)
-        mensaje = simpledialog.askstring("Git Push", "¿Qué cambios hiciste? (mensaje del commit):", parent=self.root)
-        if mensaje:
-            try:
-                subprocess.run([cmd, "add", "."], cwd=cwd, check=True, 
-                             creationflags=subprocess.CREATE_NO_WINDOW)
-                subprocess.run([cmd, "commit", "-m", mensaje], cwd=cwd, check=True, 
-                             creationflags=subprocess.CREATE_NO_WINDOW)
-                subprocess.run([cmd, "push"], cwd=cwd, check=True, 
-                             creationflags=subprocess.CREATE_NO_WINDOW)
-                messagebox.showinfo("Éxito", "¡Cambios subidos a GitHub correctamente!")
-                self.actualizar_todo()
-            except Exception as e:
-                messagebox.showerror("Error", f"Fallo al subir cambios:\n{e}")
+        
+        # 1. RUTA DE CONFIGURACIÓN PORTABLE
+        # Guardamos las llaves de GitHub en la carpeta Config del USB
+        ruta_creds = os.path.normpath(os.path.join(cwd, "..", "Config", ".git-credentials")).replace("\\", "/")
+        
+        try:
+            # 2. CONFIGURAR IDENTIDAD (Evita error 128 de autor)
+            subprocess.run([cmd, "config", "user.email", "tu_correo@ejemplo.com"], 
+                          cwd=cwd, creationflags=subprocess.CREATE_NO_WINDOW)
+            subprocess.run([cmd, "config", "user.name", "SyntaxGardener"], 
+                          cwd=cwd, creationflags=subprocess.CREATE_NO_WINDOW)
+            
+            # 3. CONFIGURAR CREDENCIALES (Evita error 128 de autenticación)
+            subprocess.run([cmd, "config", "credential.helper", f"store --file {ruta_creds}"], 
+                          cwd=cwd, creationflags=subprocess.CREATE_NO_WINDOW)
 
+            # 4. PROCESO DE SUBIDA
+            # Añadir todo, hacer commit y subir
+            subprocess.run([cmd, "add", "."], cwd=cwd, creationflags=subprocess.CREATE_NO_WINDOW)
+            
+            commit = subprocess.run([cmd, "commit", "-m", "Actualización desde menú portable"], 
+                                   cwd=cwd, capture_output=True, text=True, 
+                                   creationflags=subprocess.CREATE_NO_WINDOW)
+            
+            # Intentar el Push
+            # Nota: Si es la primera vez, podría fallar si GitHub no tiene el token
+            push = subprocess.run([cmd, "push"], cwd=cwd, capture_output=True, text=True,
+                                 creationflags=subprocess.CREATE_NO_WINDOW)
+
+            if push.returncode == 0:
+                messagebox.showinfo("Éxito", "¡Cambios subidos correctamente!")
+                self.comprobar_git_status()
+            else:
+                # Si falla, mostramos el error detallado para diagnosticar
+                messagebox.showerror("Error en Push", f"Detalle:\n{push.stderr}")
+
+        except Exception as e:
+            messagebox.showerror("Error Crítico", f"No se pudo completar la acción:\n{str(e)}")
     def realizar_pull(self):
         """Descarga cambios de GitHub"""
         cmd = self.obtener_comando_git()
