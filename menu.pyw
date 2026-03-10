@@ -148,20 +148,24 @@ class MenuFinalPerfecto:
 
     # --- FUNCIONES DE GIT MEJORADAS ---
     def obtener_comando_git(self):
-        """Busca git.exe en la ubicación exacta donde lo tienes"""
-        ruta_base = os.path.dirname(os.path.abspath(__file__))
+        """Busca git.exe en el USB o en el sistema (PC local)"""
+        # 1. Intentar ruta relativa al USB (Portabilidad total)
+        ruta_script = os.path.dirname(os.path.abspath(__file__))
+        # Subimos un nivel desde Mis_Scripts para buscar la carpeta PortableGit
+        git_usb = os.path.abspath(os.path.join(ruta_script, "..", "PortableGit", "bin", "git.exe"))
         
-        # 1. TU RUTA EXACTA (la que funciona en CMD)
-        tu_git = r"C:\Users\User\Downloads\TRABAJO_PORTABLE\PortableGit\bin\git.exe"
-        if os.path.exists(tu_git):
-            return tu_git
-        
-        # 2. Buscar en PortableGit dentro de la carpeta actual
-        portable_git = os.path.join(ruta_base, "PortableGit", "bin", "git.exe")
-        if os.path.exists(portable_git):
-            return portable_git
-        
-        # 3. Si no encuentra nada, devuelve "git"
+        if os.path.exists(git_usb):
+            # IMPORTANTE: Si usamos el Git del USB, forzamos que use la config del USB
+            os.environ["HOME"] = os.path.dirname(os.path.dirname(git_usb))
+            return git_usb
+
+        # 2. Si no está en el USB, intentar la ruta fija de tu PC principal
+        ruta_fija_pc = r"C:\Users\User\Downloads\TRABAJO_PORTABLE\PortableGit\bin\git.exe"
+        if os.path.exists(ruta_fija_pc):
+            return ruta_fija_pc
+
+        # 3. Si nada de lo anterior funciona (como en tus otros portátiles), 
+        # simplemente usamos "git", que llamará al Git instalado en Windows (PATH)
         return "git"
 
     def comprobar_git_status(self):
