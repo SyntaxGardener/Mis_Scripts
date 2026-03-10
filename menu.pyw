@@ -68,7 +68,10 @@ class MenuFinalPerfecto:
     def __init__(self, root):
         self.root = root
         self.root.title("BIBLIOTECA DE HERRAMIENTAS - PORTABLE GIT SYNC")
-        self.root.geometry("820x850")
+        ancho = 800
+        alto = 800
+        pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
+        self.root.geometry(f"{ancho}x{alto}+{pos_x}+0")
         self.root.configure(bg="#121212")
         
         # --- RUTAS DINÁMICAS (Para que funcione en cualquier PC) ---
