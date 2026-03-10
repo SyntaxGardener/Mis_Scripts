@@ -214,9 +214,6 @@ class MenuFinalPerfecto:
         termino = self.entry_busqueda.get().lower()
         if termino == "buscar...": termino = ""
         
-        ruta_base = os.path.dirname(os.path.abspath(__file__))
-        ignorar = [os.path.basename(__file__), "lanzador.bat", "iniciar.vbs", "favoritos.txt"]
-        
         try:
             archivos = [f for f in os.listdir(self.base_dir) if f.lower().endswith(('.py', '.bat', '.pyw')) and f != os.path.basename(__file__)]
         except: return
