@@ -210,34 +210,74 @@ class MenuFinalPerfecto:
         self.lbl_info.config(text=obtener_info_sistema())
 
     def cargar_scripts(self):
-        for widget in self.scrollable_frame.winfo_children(): widget.destroy()
+        for widget in self.scrollable_frame.winfo_children():
+            widget.destroy()
+    
         termino = self.entry_busqueda.get().lower()
-        if termino == "buscar...": termino = ""
-        
+        if termino == "buscar...": 
+            termino = ""
+    
+        # Lista de archivos a ignorar
+        ignorar = ["lanzador.bat", "iniciar.vbs", "favoritos.txt"]
+        script_actual = os.path.basename(__file__)
+    
         try:
-            archivos = [f for f in os.listdir(self.base_dir) if f.lower().endswith(('.py', '.bat', '.pyw')) and f != os.path.basename(__file__)]
-        except: return
-
-        cats = {cat: [] for cat in COLORES.keys()}
-        for f in archivos:
-            if termino and termino not in f.lower(): continue
-            cats[self.clasificar(f)].append(f)
+            # Obtener archivos válidos (excluyendo ignorados)
+            archivos = [f for f in os.listdir(self.base_dir) 
+                       if f.lower().endswith(('.py', '.bat', '.pyw')) 
+                       and f not in ignorar 
+                       and f != script_actual]
+        
+            # CLASIFICAR POR CATEGORÍAS
+            cats = {cat: [] for cat in COLORES.keys()}
+            for f in archivos:
+                if termino and termino not in f.lower():
+                    continue
+                cats[self.clasificar(f)].append(f)
+        
+            # MOSTRAR EN LA INTERFAZ
+            fila = 0
+            self.scrollable_frame.grid_columnconfigure((0, 1), weight=1)
+        
+            for cat, lista in cats.items():
+                if not lista:
+                    continue
+                
+                # Determinar si la carpeta está abierta
+                abierta = True if termino else self.estados_carpetas.get(cat, False)
             
-        fila = 0
-        self.scrollable_frame.grid_columnconfigure((0, 1), weight=1)
-        for cat, lista in cats.items():
-            if not lista: continue
-            abierta = True if termino else self.estados_carpetas.get(cat, False)
-            btn_carpeta = tk.Button(self.scrollable_frame, text=f"  {'📂' if abierta else '📁'}  {cat}  [{len(lista)}]", 
-                      font=("Segoe UI", 11, "bold"), bg="#1f1f1f", fg=COLORES[cat], relief="flat", anchor="w",
-                      command=lambda c=cat: self.toggle_carpeta(c))
-            btn_carpeta.grid(row=fila, column=0, columnspan=2, sticky="ew", pady=(10, 2))
-            fila += 1
-            if abierta:
-                for i, f in enumerate(sorted(lista)):
-                    r, c = fila + (i // 2), i % 2
-                    self.crear_boton(os.path.join(self.base_dir, f), r, c, COLORES[cat])
-                fila += (len(lista) + 1) // 2
+                # Botón de categoría
+                btn_carpeta = tk.Button(
+                    self.scrollable_frame, 
+                    text=f"  {'📂' if abierta else '📁'}  {cat}  [{len(lista)}]", 
+                    font=("Segoe UI", 11, "bold"), 
+                    bg="#1f1f1f", 
+                    fg=COLORES[cat], 
+                    relief="flat", 
+                    anchor="w",
+                    command=lambda c=cat: self.toggle_carpeta(c)
+                )
+                btn_carpeta.grid(row=fila, column=0, columnspan=2, sticky="ew", pady=(10, 2))
+                fila += 1
+            
+                # Mostrar scripts si la carpeta está abierta
+                if abierta:
+                    for i, f in enumerate(sorted(lista)):
+                        r, c = fila + (i // 2), i % 2
+                        self.crear_boton(os.path.join(self.base_dir, f), r, c, COLORES[cat])
+                    fila += (len(lista) + 1) // 2
+                
+        except Exception as e:
+            print(f"Error al cargar scripts: {e}")
+            # Mostrar mensaje de error en la interfaz
+            error_label = tk.Label(
+                self.scrollable_frame, 
+                text=f"Error: {e}", 
+                fg="#ff4d4d", 
+                bg="#181818"
+            )
+            error_label.grid(row=0, column=0, pady=20)
+            return
 
     def crear_boton(self, ruta, f, c, col):
         nombre = os.path.splitext(os.path.basename(ruta))[0].replace("_", " ").capitalize()
