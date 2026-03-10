@@ -160,36 +160,38 @@ class MenuFinalPerfecto:
     def comprobar_git_status(self):
         try:
             cmd = self.obtener_comando_git()
-            # 1. Configurar safe directory
             subprocess.run([cmd, "config", "--global", "safe.directory", "*"], creationflags=subprocess.CREATE_NO_WINDOW)
             
-            # 2. TRAER INFO DEL SERVIDOR (FETCH) - Esto es lo que te faltaba
-            # Usamos las credenciales guardadas en el USB
+            # 1. Fetch para actualizar el "recuerdo" del servidor
             subprocess.run([cmd, "config", "credential.helper", f"store --file {self.ruta_creds}"], cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
             subprocess.run([cmd, "fetch"], cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
 
-            # 3. VER CAMBIOS LOCALES (lo que ya tenías)
+            # 2. Check de cambios locales y remotos
             cambios_locales = subprocess.check_output([cmd, "status", "--porcelain"], cwd=self.base_dir, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
-            
-            # 4. VER SI ESTAMOS ATRASADOS (Cambios en el servidor)
-            # Compara la rama local con la remota (suponiendo que es 'main')
             status_remoto = subprocess.check_output([cmd, "rev-list", "HEAD..origin/main", "--count"], cwd=self.base_dir, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
             atrasado = int(status_remoto) if status_remoto.isdigit() else 0
 
-            # --- LÓGICA DE ETIQUETAS ---
+            # ESCENARIO A: Tienes cambios sin subir
             if cambios_locales:
-                self.root.after(0, lambda: self.lbl_git.config(text="⚠️ CAMBIOS LOCALES PENDIENTES", fg="#ff8c00"))
+                self.root.after(0, lambda: self.lbl_git.config(text="⚠️ CAMBIOS LOCALES", fg="#ff8c00"))
                 self.root.after(0, lambda: self.btn_push.config(bg="#ff8c00", fg="black", state="normal"))
+                self.root.after(0, lambda: self.btn_pull.config(state="normal")) # Por seguridad, dejamos pull activo
+
+            # ESCENARIO B: Hay cambios en la nube que no tienes (Toca descargar)
             elif atrasado > 0:
-                self.root.after(0, lambda: self.lbl_git.config(text=f"📥 {atrasado} CAMBIOS EN NUBE (DESCARGA)", fg="#00ffff"))
+                self.root.after(0, lambda: self.lbl_git.config(text=f"📥 {atrasado} CAMBIOS EN NUBE", fg="#00ffff"))
                 self.root.after(0, lambda: self.btn_push.config(bg="#333333", fg="white", state="disabled"))
+                self.root.after(0, lambda: self.btn_pull.config(state="normal", bg="#00ffff", fg="black")) # Resaltamos el botón
+
+            # ESCENARIO C: Todo perfecto y sincronizado
             else:
                 self.root.after(0, lambda: self.lbl_git.config(text="✅ REPOSITORIO SINCRONIZADO", fg="#00ff00"))
                 self.root.after(0, lambda: self.btn_push.config(bg="#333333", fg="white", state="disabled"))
-            
-        except Exception as e:
-            print(f"Error Git: {e}")
-            self.root.after(0, lambda: self.lbl_git.config(text="❌ ERROR AL SINCRONIZAR", fg="#ff4d4d"))
+                # DESACTIVAMOS EL BOTÓN DE DESCARGAR AQUÍ:
+                self.root.after(0, lambda: self.btn_pull.config(state="disabled", bg="#333333", fg="white"))
+                
+        except:
+            self.root.after(0, lambda: self.lbl_git.config(text="❌ ERROR GIT", fg="#ff4d4d"))
 
     def realizar_push(self):
         cmd = self.obtener_comando_git()
