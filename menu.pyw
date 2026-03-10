@@ -71,20 +71,20 @@ class MenuFinalPerfecto:
         self.root.geometry("820x850")
         self.root.configure(bg="#121212")
         
-        # Rutas base para portabilidad
+        # --- RUTAS DINÁMICAS (Para que funcione en cualquier PC) ---
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        # Busca PortableGit un nivel arriba de donde esté este script
         self.ruta_git = os.path.normpath(os.path.join(self.base_dir, "..", "PortableGit", "bin", "git.exe"))
         self.ruta_config = os.path.normpath(os.path.join(self.base_dir, "..", "Config"))
         self.ruta_creds = os.path.join(self.ruta_config, ".git-credentials").replace("\\", "/")
 
-        # Asegurar que carpeta Config existe
         if not os.path.exists(self.ruta_config):
             os.makedirs(self.ruta_config)
         
         self.favoritos = leer_favoritos()
         self.estados_carpetas = {cat: False for cat in COLORES.keys()}
 
-        # --- HEADER ---
+        # --- 1. HEADER ---
         header_frame = tk.Frame(self.root, bg="#121212")
         header_frame.pack(fill="x", padx=20, pady=10)
         
@@ -100,6 +100,7 @@ class MenuFinalPerfecto:
         self.github_btn.pack(side="left", padx=10, pady=(8, 0))
         self.github_btn.bind("<Button-1>", lambda e: webbrowser.open(GITHUB_URL))
         
+        # Botones de Acción
         tk.Button(header_frame, text="🔄", font=("Segoe UI", 10, "bold"), bg="#333333", fg="white", 
                  relief="flat", command=self.actualizar_todo).pack(side="right", padx=5)
         
@@ -111,7 +112,7 @@ class MenuFinalPerfecto:
                                   relief="flat", command=self.realizar_pull)
         self.btn_pull.pack(side="right", padx=5)
 
-        # --- BUSCADOR ---
+        # --- 2. BUSCADOR ---
         search_frame = tk.Frame(self.root, bg="#2d2d2d", padx=10, pady=5)
         search_frame.pack(fill="x", padx=50, pady=(5, 5))
         self.entry_busqueda = tk.Entry(search_frame, bg="#2d2d2d", fg="white", borderwidth=0, font=("Segoe UI", 11))
@@ -120,7 +121,7 @@ class MenuFinalPerfecto:
         self.entry_busqueda.bind("<FocusIn>", lambda e: self.entry_busqueda.delete(0, "end") if self.entry_busqueda.get() == "Buscar..." else None)
         self.entry_busqueda.bind("<KeyRelease>", self.filtrar_scripts)
 
-        # --- BARRA DE ESTADO ---
+        # --- 3. BARRA DE INFORMACIÓN ---
         self.status_bar = tk.Frame(self.root, bg="#1a1a1a", height=30)
         self.status_bar.pack(fill="x", padx=50, pady=(5, 10))
         self.lbl_modo = tk.Label(self.status_bar, fg="#aaaaaa", bg="#1a1a1a", font=("Segoe UI", 8, "bold"))
@@ -132,7 +133,7 @@ class MenuFinalPerfecto:
         
         self.actualizar_barra_estado()
 
-        # --- CONTENEDOR SCROLL ---
+        # --- 4. CONTENEDOR CON SCROLL ---
         self.container = tk.Frame(self.root, bg="#181818")
         self.container.pack(fill="both", expand=True, padx=20, pady=(0, 20))
         self.canvas = tk.Canvas(self.container, bg="#181818", highlightthickness=0)
@@ -149,13 +150,16 @@ class MenuFinalPerfecto:
         self.cargar_scripts()
         threading.Thread(target=self.comprobar_git_status, daemon=True).start()
 
+    # --- MOTOR GIT PORTABLE ---
     def obtener_comando_git(self):
         return self.ruta_git if os.path.exists(self.ruta_git) else "git"
 
     def comprobar_git_status(self):
         try:
             cmd = self.obtener_comando_git()
+            # Soluciona error de propiedad dudosa en diferentes PCs
             subprocess.run([cmd, "config", "--global", "safe.directory", "*"], creationflags=subprocess.CREATE_NO_WINDOW)
+            
             cambios = subprocess.check_output([cmd, "status", "--porcelain"], cwd=self.base_dir, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
             
             if cambios:
@@ -172,15 +176,17 @@ class MenuFinalPerfecto:
         mensaje = simpledialog.askstring("Git Push", "¿Qué cambios hiciste?", parent=self.root)
         if mensaje:
             try:
+                # Usa las credenciales del USB exclusivamente
                 subprocess.run([cmd, "config", "credential.helper", f"store --file {self.ruta_creds}"], cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
                 subprocess.run([cmd, "add", "."], cwd=self.base_dir, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
                 subprocess.run([cmd, "commit", "-m", mensaje], cwd=self.base_dir, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
                 res = subprocess.run([cmd, "push"], cwd=self.base_dir, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                
                 if res.returncode == 0:
-                    messagebox.showinfo("Éxito", "¡Subido a GitHub!")
+                    messagebox.showinfo("Éxito", "¡Subido a GitHub correctamente!")
                     self.actualizar_todo()
                 else:
-                    messagebox.showerror("Error", res.stderr)
+                    messagebox.showerror("Error", f"Fallo al subir:\n{res.stderr}")
             except Exception as e:
                 messagebox.showerror("Error", str(e))
 
@@ -190,13 +196,14 @@ class MenuFinalPerfecto:
             subprocess.run([cmd, "config", "credential.helper", f"store --file {self.ruta_creds}"], cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
             res = subprocess.run([cmd, "pull"], cwd=self.base_dir, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
             if res.returncode == 0:
-                messagebox.showinfo("Éxito", "¡Actualizado!")
+                messagebox.showinfo("Éxito", "¡Archivos actualizados!")
                 self.actualizar_todo()
             else:
-                messagebox.showerror("Error", res.stderr)
+                messagebox.showerror("Error", f"Fallo al descargar:\n{res.stderr}")
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
+    # --- MÉTODOS DE INTERFAZ ---
     def actualizar_barra_estado(self):
         modo = "PORTABLE (USB)" if "C:" not in self.base_dir.upper() else "PC LOCAL"
         self.lbl_modo.config(text=f"📍 {modo}")
@@ -206,13 +213,16 @@ class MenuFinalPerfecto:
         for widget in self.scrollable_frame.winfo_children(): widget.destroy()
         termino = self.entry_busqueda.get().lower()
         if termino == "buscar...": termino = ""
+        
         try:
             archivos = [f for f in os.listdir(self.base_dir) if f.lower().endswith(('.py', '.bat', '.pyw')) and f != os.path.basename(__file__)]
         except: return
+
         cats = {cat: [] for cat in COLORES.keys()}
         for f in archivos:
             if termino and termino not in f.lower(): continue
             cats[self.clasificar(f)].append(f)
+            
         fila = 0
         self.scrollable_frame.grid_columnconfigure((0, 1), weight=1)
         for cat, lista in cats.items():
