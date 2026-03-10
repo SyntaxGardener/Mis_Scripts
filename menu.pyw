@@ -208,7 +208,8 @@ class MenuFinalPerfecto:
         """Sube cambios a GitHub"""
         cmd = self.obtener_comando_git()
         cwd = os.path.dirname(os.path.abspath(__file__))
-        
+        subprocess.run([cmd, "config", "user.email", "fenokitie@gmail.com"], creationflags=subprocess.CREATE_NO_WINDOW)
+        subprocess.run([cmd, "config", "user.name", "SyntaxGardener"], creationflags=subprocess.CREATE_NO_WINDOW)
         mensaje = simpledialog.askstring("Git Push", "¿Qué cambios hiciste? (mensaje del commit):", parent=self.root)
         if mensaje:
             try:
