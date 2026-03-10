@@ -252,7 +252,7 @@ class MenuFinalPerfecto:
         if any(x in n for x in ["expulsar", "pc", "test", "usb", "imports", "limpieza", "borrar", "temp", "organizador"]): return "SISTEMA"
         if "pdf" in n: return "PDF"
         if any(x in n for x in ["examenes", "notas"]): return "CLASES"
-        if any(x in n for x in ["horario", "diligencia", "certificados", "calculador", "diplomas"]): return "ADMINISTRACIÓN"
+        if any(x in n for x in ["horario", "diligencia", "certificados", "calculador", "diplomas", "IVA"]): return "ADMINISTRACIÓN"
         if any(x in n for x in ["bingo", "crono", "traductor", "pasapalabra", "picker", "clase", "qr", "juego"]): return "AULA"
         return "OTROS"
 
