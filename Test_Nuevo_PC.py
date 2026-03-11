@@ -49,6 +49,7 @@ def check_and_update():
         ("docx", "python-docx", "Editor Word", False),
         ("pdfplumber", "pdfplumber", "Extracción PDF", False),
         ("PyPDF2", "PyPDF2", "Lector PDF", False),
+        ("pyperclip", "pyperclip", "Portapapeles", False),
         ("PIL", "pillow", "Procesado Imágenes", True),
         ("qrcode", "qrcode[pil]", "Códigos QR", False),
         ("yt_dlp", "yt-dlp", "Descarga YouTube", True),

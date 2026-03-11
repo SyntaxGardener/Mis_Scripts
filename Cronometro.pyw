@@ -5,7 +5,14 @@ class CronometroDocenteFinal:
     def __init__(self, root):
         self.root = root
         self.root.title("Cronómetro para el Aula")
-        self.root.geometry("700x650")
+        ancho = 700
+        alto = 650
+
+        # Cálculo para centrar horizontalmente
+        pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
+
+        # Aplicamos ambos valores a la geometría
+        self.root.geometry(f"{ancho}x{alto}+{pos_x}+15")
         self.root.configure(bg="#2c3e50")
 
         self.tiempo_total = 0

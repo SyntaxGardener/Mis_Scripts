@@ -110,7 +110,7 @@ class AppAsistenteFinal:
         ancho = 650
         alto = 480
         pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
-        self.root.geometry(f"{ancho}x{alto}+{pos_x}+0")
+        self.root.geometry(f"{ancho}x{alto}+{pos_x}+12")
         
         self.archivo_pdf = ""
         self.carpeta_destino = ""
