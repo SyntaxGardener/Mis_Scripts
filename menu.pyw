@@ -162,36 +162,42 @@ class MenuFinalPerfecto:
             cmd = self.obtener_comando_git()
             subprocess.run([cmd, "config", "--global", "safe.directory", "*"], creationflags=subprocess.CREATE_NO_WINDOW)
             
-            # 1. Fetch para actualizar el "recuerdo" del servidor
+            # 1. Actualizar info del servidor
             subprocess.run([cmd, "config", "credential.helper", f"store --file {self.ruta_creds}"], cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
             subprocess.run([cmd, "fetch"], cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
 
-            # 2. Check de cambios locales y remotos
-            cambios_locales = subprocess.check_output([cmd, "status", "--porcelain"], cwd=self.base_dir, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
+            # 2. Contar cambios locales (pendientes de subida)
+            # --porcelain devuelve una línea por cada archivo modificado/nuevo
+            res_locales = subprocess.check_output([cmd, "status", "--porcelain"], cwd=self.base_dir, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
+            num_locales = len(res_locales.split('\n')) if res_locales else 0
+
+            # 3. Contar cambios remotos (pendientes de descarga)
             status_remoto = subprocess.check_output([cmd, "rev-list", "HEAD..origin/main", "--count"], cwd=self.base_dir, text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
             atrasado = int(status_remoto) if status_remoto.isdigit() else 0
 
-            # ESCENARIO A: Tienes cambios sin subir
-            if cambios_locales:
-                self.root.after(0, lambda: self.lbl_git.config(text="⚠️ CAMBIOS LOCALES", fg="#ff8c00"))
-                self.root.after(0, lambda: self.btn_push.config(bg="#ff8c00", fg="black", state="normal"))
-                self.root.after(0, lambda: self.btn_pull.config(state="normal")) # Por seguridad, dejamos pull activo
+            # --- LÓGICA DE VISUALIZACIÓN ---
 
-            # ESCENARIO B: Hay cambios en la nube que no tienes (Toca descargar)
+            # ESCENARIO A: Tienes archivos locales sin guardar/subir
+            if num_locales > 0:
+                texto_push = f"⚠️ {num_locales} ARCHIVOS PARA SUBIR"
+                self.root.after(0, lambda: self.lbl_git.config(text=texto_push, fg="#ff8c00"))
+                self.root.after(0, lambda: self.btn_push.config(bg="#ff8c00", fg="black", state="normal", text=f"☁️ SUBIR ({num_locales})"))
+                self.root.after(0, lambda: self.btn_pull.config(state="normal")) 
+
+            # ESCENARIO B: Hay cambios en la nube (Pull)
             elif atrasado > 0:
                 self.root.after(0, lambda: self.lbl_git.config(text=f"📥 {atrasado} CAMBIOS EN NUBE", fg="#00ffff"))
-                self.root.after(0, lambda: self.btn_push.config(bg="#333333", fg="white", state="disabled"))
-                self.root.after(0, lambda: self.btn_pull.config(state="normal", bg="#00ffff", fg="black")) # Resaltamos el botón
+                self.root.after(0, lambda: self.btn_push.config(bg="#333333", fg="white", state="disabled", text="☁️ SUBIR CAMBIOS"))
+                self.root.after(0, lambda: self.btn_pull.config(state="normal", bg="#00ffff", fg="black", text=f"📥 DESCARGAR ({atrasado})"))
 
-            # ESCENARIO C: Todo perfecto y sincronizado
+            # ESCENARIO C: Sincronizado
             else:
                 self.root.after(0, lambda: self.lbl_git.config(text="✅ REPOSITORIO SINCRONIZADO", fg="#00ff00"))
-                self.root.after(0, lambda: self.btn_push.config(bg="#333333", fg="white", state="disabled"))
-                # DESACTIVAMOS EL BOTÓN DE DESCARGAR AQUÍ:
-                self.root.after(0, lambda: self.btn_pull.config(state="disabled", bg="#333333", fg="white"))
+                self.root.after(0, lambda: self.btn_push.config(bg="#333333", fg="white", state="disabled", text="☁️ SUBIR CAMBIOS"))
+                self.root.after(0, lambda: self.btn_pull.config(state="disabled", bg="#333333", fg="white", text="📥 DESCARGAR"))
                 
-        except:
-            self.root.after(0, lambda: self.lbl_git.config(text="❌ ERROR GIT", fg="#ff4d4d"))
+        except Exception as e:
+            self.root.after(0, lambda: self.lbl_git.config(text=f"❌ ERROR GIT", fg="#ff4d4d"))
 
     def realizar_push(self):
         cmd = self.obtener_comando_git()
