@@ -31,14 +31,25 @@ class AppExamenesPro:
         self.ruta_pdf = tk.StringVar()
         self.ruta_excel_dest = tk.StringVar()
         self.nombre_excel_sugerido = ""
+        
         tk.Label(self.tab1, text="PASO A: Convertir apuntes en base de datos de preguntas", font=("Arial", 12, "bold")).pack(pady=15)
+        
         frame_pdf = tk.LabelFrame(self.tab1, text=" 1. Selecciona el PDF original ", padx=10, pady=10)
         frame_pdf.pack(fill="x", padx=20)
+        
         tk.Entry(frame_pdf, textvariable=self.ruta_pdf, width=65).pack(side=tk.LEFT, padx=5)
         tk.Button(frame_pdf, text="Buscar...", command=self.seleccionar_pdf).pack(side=tk.LEFT)
+
+        # --- NUEVA ETIQUETA PARA MOSTRAR PÁGINAS ---
+        self.lbl_info_pdf = tk.Label(self.tab1, text="No se ha cargado ningún PDF", font=("Arial", 9, "italic"), fg="gray")
+        self.lbl_info_pdf.pack(pady=2)
+        # ------------------------------------------
+
         tk.Label(self.tab1, text="2. Páginas a extraer (ej: 7, 9, 15-20):", font=("Arial", 10)).pack(pady=10)
         self.ent_pags = tk.Entry(self.tab1, width=40)
         self.ent_pags.pack()
+        
+        # ... resto del código del setup_tab1 ...
         frame_ex = tk.LabelFrame(self.tab1, text=" 3. Guardar Almacén (Excel) como... ", padx=10, pady=10)
         frame_ex.pack(fill="x", padx=20, pady=15)
         tk.Entry(frame_ex, textvariable=self.ruta_excel_dest, width=65).pack(side=tk.LEFT, padx=5)
@@ -52,39 +63,82 @@ class AppExamenesPro:
             nombre = os.path.splitext(os.path.basename(f))[0]
             self.nombre_excel_sugerido = f"Banco_Preguntas_{nombre}.xlsx"
             self.ruta_excel_dest.set(self.nombre_excel_sugerido)
-
-    def seleccionar_destino_excel(self):
-        f = filedialog.asksaveasfilename(initialfile=self.nombre_excel_sugerido, defaultextension=".xlsx")
-        if f: self.ruta_excel_dest.set(f)
+            
+            try:
+                doc = fitz.open(f)
+                self.total_paginas_pdf = len(doc) # Guardamos el total para validar después
+                self.lbl_info_pdf.config(text=f"El PDF tiene {self.total_paginas_pdf} páginas.", fg="blue")
+                doc.close()
+            except Exception as e:
+                self.lbl_info_pdf.config(text="Error al leer el PDF", fg="red")
 
     def run_extraccion(self):
         try:
-            doc_pdf = fitz.open(self.ruta_pdf.get())
+            ruta = self.ruta_pdf.get()
+            if not ruta:
+                messagebox.showwarning("Atención", "Selecciona un PDF primero.")
+                return
+
+            doc_pdf = fitz.open(ruta)
             pags_str = self.ent_pags.get()
             indices = []
-            for p in pags_str.split(','):
-                if '-' in p:
-                    ini, fin = map(int, p.split('-'))
-                    indices.extend(range(ini-1, fin))
-                else: indices.append(int(p.strip())-1)
+            
+            # --- MEJORA 1: VALIDACIÓN DE PÁGINAS ---
+            try:
+                for p in pags_str.split(','):
+                    if '-' in p:
+                        ini, fin = map(int, p.split('-'))
+                        if ini < 1 or fin > self.total_paginas_pdf:
+                            raise ValueError(f"Rango {p} fuera de límites (1-{self.total_paginas_pdf})")
+                        indices.extend(range(ini-1, fin))
+                    else:
+                        val = int(p.strip())
+                        if val < 1 or val > self.total_paginas_pdf:
+                            raise ValueError(f"Página {val} no existe")
+                        indices.append(val-1)
+            except ValueError as ve:
+                messagebox.showerror("Error de Rango", f"Página no válida: {ve}")
+                return
+
             preguntas = []
             pregunta_actual = ""
+            
+            # --- MEJORA 2: REGEX FILTRADO (Excluye 1.1, 2.1.3, etc.) ---
+            # Explicación: ^\d+ significa que empiece por números.
+            # [\.\)] significa que le siga un punto o paréntesis.
+            # (?!\d) es un "negative lookahead": asegura que después del punto NO haya otro número.
+            patron_pregunta = r'^\d+[\.\)](?!\d)'
+
             for idx in indices:
                 if idx >= len(doc_pdf): continue
                 for b in doc_pdf[idx].get_text("dict")["blocks"]:
                     if "lines" not in b: continue
                     for l in b["lines"]:
-                        txt = "".join([s["text"] for s in l["spans"]])
+                        txt = "".join([s["text"] for s in l["spans"]]).strip()
                         bold = any(s["flags"] & 2 or "bold" in s["font"].lower() for s in l["spans"])
-                        if bold and re.match(r'^\d+[\.\)]', txt.strip()):
+                        
+                        # Aplicamos el nuevo filtro
+                        if bold and re.match(patron_pregunta, txt):
                             if pregunta_actual: preguntas.append(pregunta_actual.strip())
                             pregunta_actual = txt
                         elif pregunta_actual and "entregar" not in txt.lower():
                             pregunta_actual += " " + txt
+            
             if pregunta_actual: preguntas.append(pregunta_actual.strip())
+            
+            if not preguntas:
+                messagebox.showwarning("Aviso", "No se detectaron preguntas con negrita y numeración simple.")
+                return
+
             pd.DataFrame({"Pregunta": preguntas}).to_excel(self.ruta_excel_dest.get(), index=False)
-            messagebox.showinfo("Éxito", "Excel creado correctamente.")
-        except Exception as e: messagebox.showerror("Error", f"Fallo al extraer: {e}")
+            messagebox.showinfo("Éxito", f"Excel creado con {len(preguntas)} preguntas.")
+            
+        except Exception as e: 
+            messagebox.showerror("Error", f"Fallo al extraer: {e}")
+
+    def seleccionar_destino_excel(self):
+        f = filedialog.asksaveasfilename(initialfile=self.nombre_excel_sugerido, defaultextension=".xlsx")
+        if f: self.ruta_excel_dest.set(f)
 
     def setup_tab2(self):
         self.preguntas_db = []
