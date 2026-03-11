@@ -114,7 +114,17 @@ def reparar_git():
 # --- 4. GUI ---
 root = tk.Tk()
 root.title("ANALIZADOR DE IMPORTS")
-root.geometry("800x600")
+# --- Configuración de dimensiones ---
+ancho_ventana = 800
+alto_ventana = 600
+distancia_superior = 20
+        
+# Obtener dimensiones y calcular centro
+ancho_pantalla = root.winfo_screenwidth()
+posicion_x = (ancho_pantalla // 2) - (ancho_ventana // 2)
+        
+# Aplicar geometría corregida
+root.geometry(f"{ancho_ventana}x{alto_ventana}+{posicion_x}+{distancia_superior}")
 root.configure(bg="#0f172a")
 
 frame_top = tk.Frame(root, bg="#1e293b", pady=10)
