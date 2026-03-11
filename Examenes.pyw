@@ -12,7 +12,7 @@ class AppExamenesPro:
         ancho = 700
         alto = 700
         pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
-        self.root.geometry(f"{ancho}x{alto}+{pos_x}+0")
+        self.root.geometry(f"{ancho}x{alto}+{pos_x}+15")
         
         # Variable para guardar el nombre del excel cargado
         self.nombre_archivo_excel = "Pro" 

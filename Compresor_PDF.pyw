@@ -139,7 +139,19 @@ def comprimir():
 
 ventana = TkinterDnD.Tk()
 ventana.title("Compresor de PDFs")
-ventana.geometry("500x420")
+# --- Configuración de dimensiones ---
+ancho_ventana = 500
+alto_ventana = 420
+distancia_superior = 50
+
+# Obtener las dimensiones de la pantalla del usuario
+ancho_pantalla = ventana.winfo_screenwidth()
+
+# Calcular la posición X para que esté centrada
+posicion_x = (ancho_pantalla // 2) - (ancho_ventana // 2)
+
+# Aplicar la geometría: "Ancho x Alto + PosicionX + PosicionY"
+ventana.geometry(f"{ancho_ventana}x{alto_ventana}+{posicion_x}+{distancia_superior}")
 
 frame = tk.Frame(ventana,padx=10,pady=10)
 frame.pack(fill="both",expand=True)

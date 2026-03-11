@@ -1,0 +1,18 @@
+{
+    "pil": "Pillow",
+    "fitz": "pymupdf",
+    "docx": "python-docx",
+    "yt_dlp": "yt-dlp",
+    "cv2": "opencv-python",
+    "sklearn": "scikit-learn",
+    "yaml": "pyyaml",
+    "dateutil": "python-dateutil",
+    "pypdf": "pypdf",
+    "pyperclip": "pyperclip",
+    "bs4": "bs4",
+    "deep_translator": "deep_translator",
+    "edge_tts": "edge_tts",
+    "pythoncom": "pythoncom",
+    "speech_recognition": "speech_recognition",
+    "win32com": "win32com"
+}

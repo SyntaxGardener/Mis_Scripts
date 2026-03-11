@@ -15,7 +15,10 @@ class TraductorUSB:
         self.root = root
         self.root.title("TRADUCTOR")
         # Ventana ajustada para evitar espacio negro sobrante
-        self.root.geometry("600x630")
+        ancho = 600
+        alto = 630
+        pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
+        self.root.geometry(f"{ancho}x{alto}+{pos_x}+20")
         self.root.configure(bg="#121212")
         self.root.resizable(False, False)
         

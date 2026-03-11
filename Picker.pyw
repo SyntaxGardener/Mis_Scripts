@@ -15,7 +15,21 @@ class SelectorUniversal:
     def __init__(self, root):
         self.root = root
         self.root.title("Selector de Alumnos Universal")
-        self.root.geometry("700x750")
+        # --- CONFIGURACIÓN DE GEOMETRÍA DINÁMICA ---
+        # Definimos el tamaño de la ventana
+        ancho_ventana = 700
+        alto_ventana = 750
+        
+        # Obtenemos el ancho de tu pantalla actual
+        ancho_pantalla = self.root.winfo_screenwidth()
+        
+        # Calculamos la posición X para que esté centrada
+        pos_x = (ancho_pantalla // 2) - (ancho_ventana // 2)
+        # Posición Y en 0 para que esté pegada arriba
+        pos_y = 0
+        
+        # Aplicamos la geometría: "Ancho x Alto + X + Y"
+        self.root.geometry(f"{ancho_ventana}x{alto_ventana}+{pos_x}+{pos_y}")
         self.root.configure(bg="#2c3e50")
         
         self.lista_completa = []
