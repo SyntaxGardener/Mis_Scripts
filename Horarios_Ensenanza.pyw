@@ -28,7 +28,15 @@ class AppFinal:
     def __init__(self, root):
         self.root = root
         self.root.title("Filtro")
-        self.root.geometry("600x550")
+        # 1. Definimos el tamaño que queremos
+        ancho = 600
+        alto = 550
+        
+        # 2. Calculamos la posición (Esto es lo que va dentro de init)
+        pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
+        
+        # 3. Aplicamos la magia: Ancho x Alto + Derecha + Arriba (20)
+        self.root.geometry(f"{ancho}x{alto}+{pos_x}+20")
         self.tareas = []
 
         tk.Label(root, text="Generador de Horarios por Enseñanzas", font=('Arial', 12, 'bold')).pack(pady=10)

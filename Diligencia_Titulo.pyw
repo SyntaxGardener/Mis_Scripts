@@ -35,7 +35,15 @@ class AppDiligencias:
     def __init__(self, root):
         self.root = root
         self.root.title("Generador de Diligencias")
-        self.root.geometry("450x300")
+        # 1. Definimos el tamaño que queremos
+        ancho = 450
+        alto = 300
+        
+        # 2. Calculamos la posición (Esto es lo que va dentro de init)
+        pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
+        
+        # 3. Aplicamos la magia: Ancho x Alto + Derecha + Arriba (20)
+        self.root.geometry(f"{ancho}x{alto}+{pos_x}+20")
         self.root.resizable(False, False)
         
         # Variables de ruta

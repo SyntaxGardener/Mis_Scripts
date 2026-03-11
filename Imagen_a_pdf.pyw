@@ -7,7 +7,15 @@ class ConversorImagenesPDF:
     def __init__(self, root):
         self.root = root
         self.root.title("Conversor Imágenes a PDF")
-        self.root.geometry("500x400")
+        # 1. Definimos el tamaño que queremos
+        ancho = 500
+        alto = 400
+        
+        # 2. Calculamos la posición (Esto es lo que va dentro de init)
+        pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
+        
+        # 3. Aplicamos la magia: Ancho x Alto + Derecha + Arriba (50)
+        self.root.geometry(f"{ancho}x{alto}+{pos_x}+50")
         
         self.imagenes = []
         

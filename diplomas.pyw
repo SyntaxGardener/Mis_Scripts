@@ -8,7 +8,15 @@ class GeneradorFinal:
     def __init__(self, root):
         self.root = root
         self.root.title("Generador de Diplomas")
-        self.root.geometry("450x420")
+        # 1. Definimos el tamaño que queremos
+        ancho = 450
+        alto = 420
+        
+        # 2. Calculamos la posición (Esto es lo que va dentro de init)
+        pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
+        
+        # 3. Aplicamos la magia: Ancho x Alto + Derecha + Arriba (30)
+        self.root.geometry(f"{ancho}x{alto}+{pos_x}+30")
         
         self.img_path = ""
         self.puntos = [] 

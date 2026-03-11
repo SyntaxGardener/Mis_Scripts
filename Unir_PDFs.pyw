@@ -71,7 +71,18 @@ def ejecutar_union():
 # --- Interfaz ---
 app = tk.Tk()
 app.title("Unificador de PDF")
-app.geometry("450x600")
+ancho_ventana = 450
+alto_ventana = 600
+distancia_superior = 50
+
+# USAR 'app' en lugar de 'ventana'
+ancho_pantalla = app.winfo_screenwidth()
+
+# Calcular la posición X para que esté centrada
+posicion_x = (ancho_pantalla // 2) - (ancho_ventana // 2)
+
+# Aplicar la geometría a 'app'
+app.geometry(f"{ancho_ventana}x{alto_ventana}+{posicion_x}+{distancia_superior}")
 app.configure(padx=20, pady=20)
 
 tk.Label(app, text="1. Lista de archivos a unir:", font=("Arial", 10, "bold")).pack(anchor="w")
