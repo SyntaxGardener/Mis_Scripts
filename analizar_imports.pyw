@@ -107,7 +107,7 @@ def ejecutar_instalacion():
 
 # --- 5. GUI CON POSICIONAMIENTO ---
 root = tk.Tk()
-root.title("Gestor USB Pro")
+root.title("Analizar imports para detectar librerías faltantes")
 
 # Configuración de ventana (Centrada y a 50px del borde superior)
 ancho_v = 800
