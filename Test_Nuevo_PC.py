@@ -47,6 +47,7 @@ def check_and_update():
         ("docx2pdf", "docx2pdf", "Word a PDF", True),
         ("tkinterdnd2", "tkinterdnd2", "Arrastrar archivos en interfaz", False),
         ("docx", "python-docx", "Editor Word", False),
+        ("docx2txt", "docx2txt", "Extraer texto", False),
         ("pdfplumber", "pdfplumber", "Extracción PDF", False),
         ("PyPDF2", "PyPDF2", "Lector PDF", False),
         ("pyperclip", "pyperclip", "Portapapeles", False),
