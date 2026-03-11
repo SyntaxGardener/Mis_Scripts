@@ -53,6 +53,7 @@ def check_and_update():
         ("pyperclip", "pyperclip", "Portapapeles", False),
         ("PIL", "pillow", "Procesado Imágenes", True),
         ("qrcode", "qrcode[pil]", "Códigos QR", False),
+        ("matplotlib", "matplotlib", "Gráficos", False),
         ("yt_dlp", "yt-dlp", "Descarga YouTube", True),
         ("win32com", "pywin32", "Automatización Win", False),
         ("pythoncom", "pywin32", "Componentes COM", False),
