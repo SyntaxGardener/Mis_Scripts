@@ -9,7 +9,10 @@ class AppExamenesPro:
     def __init__(self, root):
         self.root = root
         self.root.title("Generador de Exámenes")
-        self.root.geometry("750x750")
+        ancho = 700
+        alto = 700
+        pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
+        self.root.geometry(f"{ancho}x{alto}+{pos_x}+0")
         
         # Variable para guardar el nombre del excel cargado
         self.nombre_archivo_excel = "Pro" 
