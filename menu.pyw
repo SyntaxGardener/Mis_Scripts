@@ -106,7 +106,9 @@ class MenuFinalPerfecto:
         # Botones de Acción
         tk.Button(header_frame, text="🔄", font=("Segoe UI", 10, "bold"), bg="#333333", fg="white", 
                  relief="flat", command=self.actualizar_todo).pack(side="right", padx=5)
-        
+        # Botón de Reparar (Añadir debajo del de actualizar todo)
+        tk.Button(header_frame, text="🛠️ REPARAR", font=("Segoe UI", 8, "bold"), bg="#444444", fg="#ff4d4d", 
+                  relief="flat", command=self.reparar_repositorio).pack(side="right", padx=5)
         self.btn_push = tk.Button(header_frame, text="☁️ SUBIR CAMBIOS", font=("Segoe UI", 8, "bold"), bg="#333333", fg="white", 
                                   relief="flat", state="disabled", command=self.realizar_push)
         self.btn_push.pack(side="right", padx=5)
@@ -114,7 +116,9 @@ class MenuFinalPerfecto:
         self.btn_pull = tk.Button(header_frame, text="📥 DESCARGAR", font=("Segoe UI", 8, "bold"), bg="#333333", fg="white", 
                                   relief="flat", command=self.realizar_pull)
         self.btn_pull.pack(side="right", padx=5)
-
+        
+        
+        
         # --- 2. BUSCADOR ---
         search_frame = tk.Frame(self.root, bg="#2d2d2d", padx=10, pady=5)
         search_frame.pack(fill="x", padx=50, pady=(5, 5))
@@ -237,6 +241,27 @@ class MenuFinalPerfecto:
                 messagebox.showwarning("Atención", "No se pudo sincronizar automáticamente.\nEs posible que haya cambios locales que choquen con la nube.")
         except Exception as e:
             messagebox.showerror("Error", f"Error al descargar: {e}")
+   
+    def reparar_repositorio(self):
+        """Limpia bloqueos de Git y fuerza el USB a estar igual que la nube."""
+        if messagebox.askyesno("Reparar Git", "Esto cancelará errores de 'Rebase' y sincronizará el USB con GitHub.\n¿Deseas continuar?"):
+            cmd = self.obtener_comando_git()
+            try:
+                # 1. Abortar cualquier proceso bloqueado (Rebase/Merge)
+                subprocess.run([cmd, "rebase", "--abort"], cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
+                subprocess.run([cmd, "merge", "--abort"], cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
+                
+                # 2. Resetear al estado de la nube (Limpia conflictos del USB)
+                subprocess.run([cmd, "fetch", "origin"], cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
+                res = subprocess.run([cmd, "reset", "--hard", "origin/main"], cwd=self.base_dir, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                
+                if res.returncode == 0:
+                    messagebox.showinfo("Éxito", "Repositorio reparado y actualizado.")
+                    self.actualizar_todo()
+                else:
+                    messagebox.showerror("Error", f"No se pudo reparar:\n{res.stderr}")
+            except Exception as e:
+                messagebox.showerror("Error Crítico", str(e))
 
     # --- MÉTODOS DE INTERFAZ ---
     def actualizar_barra_estado(self):
