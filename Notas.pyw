@@ -107,7 +107,10 @@ class AppAsistenteFinal:
     def __init__(self, root):
         self.root = root
         self.root.title("Generador de Registro de Notas (excel)")
-        self.root.geometry("650x480")
+        ancho = 650
+        alto = 480
+        pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
+        self.root.geometry(f"{ancho}x{alto}+{pos_x}+0")
         
         self.archivo_pdf = ""
         self.carpeta_destino = ""
