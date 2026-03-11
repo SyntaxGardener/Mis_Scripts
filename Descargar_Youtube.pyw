@@ -58,8 +58,19 @@ def seleccionar_carpeta():
 
 # --- Configuración de la Ventana ---
 root = tk.Tk()
-root.title("Descargador Educativo v2.0")
-root.geometry("500x400")
+root.title("Descargador YouTube")
+ancho_ventana = 500
+alto_ventana = 400
+distancia_superior = 50
+
+# USAR 'root' en lugar de 'ventana'
+ancho_pantalla = root.winfo_screenwidth()
+
+# Calcular la posición X para que esté centrada
+posicion_x = (ancho_pantalla // 2) - (ancho_ventana // 2)
+
+# Aplicar la geometría a 'root'
+root.geometry(f"{ancho_ventana}x{alto_ventana}+{posicion_x}+{distancia_superior}")
 
 # Menú contextual (Botón derecho)
 menu_contextual = tk.Menu(root, tearoff=0)
