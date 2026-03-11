@@ -73,7 +73,18 @@ def ejecutar_conversion():
 # --- Interfaz Gráfica ---
 app = tk.Tk()
 app.title("PDF a Word")
-app.geometry("400x550")
+ancho_ventana = 400
+alto_ventana = 550
+distancia_superior = 50
+
+# USAR 'app' en lugar de 'ventana'
+ancho_pantalla = app.winfo_screenwidth()
+
+# Calcular la posición X para que esté centrada
+posicion_x = (ancho_pantalla // 2) - (ancho_ventana // 2)
+
+# Aplicar la geometría a 'app'
+app.geometry(f"{ancho_ventana}x{alto_ventana}+{posicion_x}+{distancia_superior}")
 app.configure(padx=20, pady=20)
 
 # 1. Selección de PDF
