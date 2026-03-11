@@ -221,15 +221,22 @@ class MenuFinalPerfecto:
     def realizar_pull(self):
         cmd = self.obtener_comando_git()
         try:
+            # 1. Aborta cualquier proceso bloqueado (como el rebase de la imagen)
+            subprocess.run([cmd, "rebase", "--abort"], cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
+            
+            # 2. Configura credenciales
             subprocess.run([cmd, "config", "credential.helper", f"store --file {self.ruta_creds}"], cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
-            res = subprocess.run([cmd, "pull"], cwd=self.base_dir, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            
+            # 3. Pull estándar (evita que entre en modo rebase automáticamente)
+            res = subprocess.run([cmd, "pull", "--no-rebase"], cwd=self.base_dir, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            
             if res.returncode == 0:
                 messagebox.showinfo("Éxito", "¡Archivos actualizados!")
                 self.actualizar_todo()
             else:
-                messagebox.showerror("Error", f"Fallo al descargar:\n{res.stderr}")
+                messagebox.showwarning("Atención", "No se pudo sincronizar automáticamente.\nEs posible que haya cambios locales que choquen con la nube.")
         except Exception as e:
-            messagebox.showerror("Error", str(e))
+            messagebox.showerror("Error", f"Error al descargar: {e}")
 
     # --- MÉTODOS DE INTERFAZ ---
     def actualizar_barra_estado(self):
