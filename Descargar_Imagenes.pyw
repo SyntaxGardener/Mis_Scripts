@@ -29,7 +29,15 @@ class DescargadorPremium:
     def __init__(self, root):
         self.root = root
         self.root.title("🖼️ Descargador de Imágenes")
-        self.root.geometry("1000x800")
+        # 1. Definimos el tamaño que queremos
+        ancho = 650
+        alto = 800
+        
+        # 2. Calculamos la posición (Esto es lo que va dentro de init)
+        pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
+        
+        # 3. Aplicamos la magia: Ancho x Alto + Derecha + Arriba (0)
+        self.root.geometry(f"{ancho}x{alto}+{pos_x}+0")
         
         # Configurar cierre
         self.root.protocol("WM_DELETE_WINDOW", self.cerrar_app)

@@ -15,7 +15,18 @@ class ComparadorDOCXAvanzado:
     def __init__(self, root):
         self.root = root
         self.root.title("Comparador de Documentos DOCX")
-        self.root.geometry("1000x800")
+        ancho_ventana = 1000
+        alto_ventana = 800
+        distancia_superior = 0
+
+        # USAR 'root' en lugar de 'ventana'
+        ancho_pantalla = root.winfo_screenwidth()
+
+        # Calcular la posición X para que esté centrada
+        posicion_x = (ancho_pantalla // 2) - (ancho_ventana // 2)
+
+        # Aplicar la geometría a 'root'
+        root.geometry(f"{ancho_ventana}x{alto_ventana}+{posicion_x}+{distancia_superior}")
         
         # Variables
         self.archivo1 = tk.StringVar()
