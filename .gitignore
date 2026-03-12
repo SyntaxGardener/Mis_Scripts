@@ -1,3 +1,36 @@
-gs/ 
-*.exe 
-*.txt
+# --- Entorno de Python (Básico) ---
+__pycache__/
+*.pyc
+
+# --- Herramientas de Imagen y QR ---
+# Ignora las imágenes descargadas o QRs generados si son temporales
+# (Ajusta los nombres si usas carpetas específicas)
+*.png
+*.jpg
+*.jpeg
+!Resultados_Graficos/*.png
+
+# --- Generador de Documentos (PDF/DOCX) ---
+# Ignora los resultados finales, quédate solo con el código que los crea
+*.pdf
+*.docx
+# Archivos temporales que crean Word/Acrobat al abrir archivos
+~$*.docx
+*.tmp
+
+# --- Descargas de YouTube / Video ---
+*.mp4
+*.mkv
+*.webm
+*.mp3
+
+# --- Basura de Windows ---
+Thumbs.db
+desktop.ini
+
+# --- Txt---
+error_log.txt
+
+# --- Carpetas de Estructura ---
+gs/
+*.exe
