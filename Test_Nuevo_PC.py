@@ -39,6 +39,7 @@ def check_and_update():
         ("pyttsx3", "pyttsx3", "Voz Offline", False),
         ("deep_translator", "deep-translator", "Traductor Google", True),
         ("pandas", "pandas", "Análisis Datos", True),
+        ("numpy", "numpy", "Operaciones Matemáticas y Arrays", True),
         ("openpyxl", "openpyxl", "Excel", False),
         ("xlsxwriter", "xlsxwriter", "Formatos Excel", False),
         ("fitz", "pymupdf", "Motor PDF (Imágenes)", True),
