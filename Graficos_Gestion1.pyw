@@ -14,50 +14,64 @@ import sys
 # ============================================
 # CLASE PERSONALIZADA DEL TOOLBAR
 # ============================================
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+import numpy as np
+import os
+import subprocess
+import sys
+
+# ============================================
+# CLASE PERSONALIZADA DEL TOOLBAR (MODIFICADA)
+# ============================================
 class ToolbarMinimo(NavigationToolbar2Tk):
-    """Toolbar de matplotlib - versión mínima"""
+    """Toolbar de matplotlib - VERSIÓN SOLO GUARDAR"""
     
     def __init__(self, canvas, window, nombre_base, app):
+        # --- EL TRUCO ESTÁ AQUÍ ---
+        # Filtramos la lista de herramientas original para dejar solo 'Save'
+        self.toolitems = [item for item in NavigationToolbar2Tk.toolitems if item[0] == 'Save']
+        
         self.nombre_base = nombre_base
         self.app = app
         super().__init__(canvas, window)
     
     def save_figure(self, *args):
-        """Sobrescribe el método de guardado"""
-        from matplotlib.backends._backend_tk import SaveFigureTk
-        
-        filetypes = self.canvas.get_supported_filetypes_grouped()
-        tk_filetypes = [
-            (name, "*.%s" % ext) for name, exts in sorted(filetypes.items()) for ext in exts
-        ]
-        
-        nombre_sugerido = f"{self.nombre_base}.png"
+        """Método de guardado optimizado"""
+        nombre_sugerido = f"{self.nombre_base if self.nombre_base else 'grafico'}.png"
         
         filename = filedialog.asksaveasfilename(
             title="Guardar gráfico como",
             initialfile=nombre_sugerido,
-            filetypes=tk_filetypes + [("Todos los archivos", "*.*")]
+            filetypes=[("PNG Image", "*.png"), ("Todos los archivos", "*.*")]
         )
         
         if filename:
             try:
                 self.canvas.figure.savefig(filename)
-                self.canvas.draw_idle()
                 
-                respuesta = tk.messagebox.askyesno(
+                respuesta = messagebox.askyesno(
                     "Guardado correcto", 
                     f"✅ Gráfico guardado como:\n{filename}\n\n¿Quieres abrir la carpeta?"
                 )
                 
                 if respuesta:
                     carpeta = os.path.dirname(filename)
-                    if os.name == 'nt':
+                    if os.name == 'nt': # Windows
                         os.startfile(carpeta)
-                    elif os.name == 'posix':
-                        subprocess.Popen(['open', carpeta] if sys.platform == 'darwin' else ['xdg-open', carpeta])
+                    elif sys.platform == 'darwin': # macOS
+                        subprocess.Popen(['open', carpeta])
+                    else: # Linux
+                        subprocess.Popen(['xdg-open', carpeta])
                         
             except Exception as e:
-                tk.messagebox.showerror("Error", f"Error al guardar:\n{str(e)}")
+                messagebox.showerror("Error", f"Error al guardar:\n{str(e)}")
 
 class AplicacionGraficos:
     def __init__(self, root):
