@@ -19,7 +19,22 @@ class EditorVideoApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Editor de Video con MoviePy")
-        self.root.geometry("1000x650")
+        # Calcular posición centrada con un pequeño margen superior
+        ancho = 1000
+        alto = 650
+        margen_superior = 20  # 20 píxeles de margen desde arriba
+
+        # Obtener dimensiones de la pantalla
+        ancho_pantalla = self.root.winfo_screenwidth()
+        alto_pantalla = self.root.winfo_screenheight()
+        
+        # Calcular posición x centrada
+        x = (ancho_pantalla - ancho) // 2
+        
+        # Posición y con margen superior
+        y = margen_superior
+
+        self.root.geometry(f"{ancho}x{alto}+{x}+{y}")
         self.root.minsize(900, 550)
         
         # Configurar estilo
