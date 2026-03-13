@@ -1,4 +1,5 @@
 Pillow
+PyPDF2
 beautifulsoup4
 dateutil
 deep_translator
