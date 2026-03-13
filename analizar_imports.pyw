@@ -1,20 +1,28 @@
 import os
 import ast
 import sys
+import importlib 
+import importlib.util  # Necesario para el chequeo real
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 import subprocess
 
-# --- 1. DETECCIÓN DE RUTAS (ESTRUCTURA TRABAJO_PORTABLE) ---
-# Forzamos que busque en la carpeta real del archivo
+# --- 1. DETECCIÓN DE RUTAS ---
 CARPETA_SCRIPTS = os.path.dirname(os.path.abspath(__file__))
-# Subimos un nivel para llegar a la raíz donde está PortableGit
 RAIZ_PORTABLE = os.path.dirname(CARPETA_SCRIPTS)
 
+# Diccionario de traducción: 'nombre_en_codigo': 'nombre_en_pip'
 MAPEO = {
-    'pil': 'Pillow', 'fitz': 'pymupdf', 'docx': 'python-docx',
-    'bs4': 'beautifulsoup4', 'pyperclip': 'pyperclip', 'docx2txt': 'docx2txt',
-    'cv2': 'opencv-python', 'yaml': 'pyyaml'
+    'pil': 'Pillow', 
+    'fitz': 'pymupdf', 
+    'docx': 'python-docx',
+    'bs4': 'beautifulsoup4', 
+    'pyperclip': 'pyperclip', 
+    'docx2txt': 'docx2txt',
+    'cv2': 'opencv-python', 
+    'yaml': 'pyyaml',
+    'speech_recognition': 'SpeechRecognition',
+    'edge_tts': 'edge-tts'
 }
 
 LIBRERIAS_ESTANDAR = [
@@ -23,15 +31,18 @@ LIBRERIAS_ESTANDAR = [
     'asyncio', 'threading', 'ctypes', 'unicodedata', 'warnings', 'importlib', 'io'
 ]
 
-# --- 2. MOTOR DE BÚSQUEDA ---
 base_datos = {}
+
+# --- 2. MOTOR DE BÚSQUEDA ---
 
 def analizar_y_generar():
     base_datos.clear()
     todos_pips = set()
     
+    # Limpia la memoria de Python para detectar cambios tras instalar
+    importlib.invalidate_caches() 
+    
     try:
-        # Listamos solo archivos .py o .pyw en Mis_Scripts
         archivos = [f for f in os.listdir(CARPETA_SCRIPTS) if f.lower().endswith(('.py', '.pyw'))]
     except Exception as e:
         messagebox.showerror("Error", f"No se pudo leer la carpeta: {e}")
@@ -61,27 +72,18 @@ def analizar_y_generar():
             if importados:
                 res = []
                 for m in sorted(importados):
-                    # Chequeo de PIL y otros (insensible a mayúsculas)
+                    # --- COMPROBACIÓN SINCERA (No más falsos positivos) ---
                     try:
-                        __import__(m.lower())
-                        est = True
+                        # Buscamos si el archivo existe realmente en el USB
+                        spam = importlib.util.find_spec(m) or importlib.util.find_spec(m.lower())
+                        est = spam is not None 
                     except:
-                        try:
-                            __import__(m)
-                            est = True
-                        except:
-                            est = False
+                        est = False
                     
                     res.append({"nombre": m, "instalado": est})
                     todos_pips.add(MAPEO.get(m.lower(), m))
                 base_datos[arc] = res
         except: pass
-
-    # Generar requirements.txt
-    try:
-        with open(os.path.join(CARPETA_SCRIPTS, "requirements.txt"), "w", encoding="utf-8") as f:
-            f.write("\n".join(sorted(todos_pips)))
-    except: pass
 
 # --- 3. ACCIONES ---
 def instalar():
@@ -92,44 +94,34 @@ def instalar():
             return
         faltantes.add("pyperclip")
 
-    py_exe = sys.executable.replace("pythonw.exe", "python.exe")
-    cmd = f'"{py_exe}" -m pip install --upgrade {" ".join(faltantes)} & pause'
-    subprocess.Popen(f'start "Instalador USB" cmd /k {cmd}', shell=True)
+    py_exe = sys.executable.lower().replace("pythonw.exe", "python.exe")
+    libs = " ".join(faltantes)
+    cmd_pip = f'"{py_exe}" -m pip install --upgrade {libs}'
+    
+    try:
+        # Lanza la consola de instalación de forma limpia
+        subprocess.Popen(f'start "Instalador USB" cmd /k "{cmd_pip} & pause"', shell=True, creationflags=0x08000000)
+    except Exception as e:
+        messagebox.showerror("Error", f"No se pudo iniciar: {e}")
 
 def reparar_git():
-    # Comprobar si hay repo en Mis_Scripts o en la Raíz
     target = CARPETA_SCRIPTS if os.path.exists(os.path.join(CARPETA_SCRIPTS, ".git")) else RAIZ_PORTABLE
-    
-    if not os.path.exists(os.path.join(target, ".git")):
-        messagebox.showwarning("Git", "No se encontró la carpeta .git para reparar.")
-        return
-
-    # Ruta al Git Portable (según tu captura TRABAJO_PORTABLE/PortableGit)
     git_path = os.path.join(RAIZ_PORTABLE, "PortableGit", "bin", "git.exe")
     git_exe = f'"{git_path}"' if os.path.exists(git_path) else "git"
 
-    comando = f'cd /d "{target}" && {git_exe} gc --prune=now --aggressive && {git_exe} fsck && pause'
-    subprocess.Popen(f'start "Repair Git" cmd /k {comando}', shell=True)
+    comando = f'cd /d "{target}" && {git_exe} gc --prune=now --aggressive && pause'
+    subprocess.Popen(f'start "Repair Git" cmd /k "{comando}"', shell=True, creationflags=0x08000000)
 
 # --- 4. GUI ---
 root = tk.Tk()
-root.title("ANALIZADOR DE IMPORTS")
-# --- Configuración de dimensiones ---
-ancho_ventana = 800
-alto_ventana = 600
-distancia_superior = 20
-        
-# Obtener dimensiones y calcular centro
-ancho_pantalla = root.winfo_screenwidth()
-posicion_x = (ancho_pantalla // 2) - (ancho_ventana // 2)
-        
-# Aplicar geometría corregida
-root.geometry(f"{ancho_ventana}x{alto_ventana}+{posicion_x}+{distancia_superior}")
+root.title("ANALIZADOR DE IMPORTS PORTABLE")
+root.geometry(f"800x600+{(root.winfo_screenwidth()//2)-400}+20")
 root.configure(bg="#0f172a")
 
 frame_top = tk.Frame(root, bg="#1e293b", pady=10)
 frame_top.pack(fill="x")
 
+# Botones con funciones agrupadas
 tk.Button(frame_top, text="🚀 INSTALAR", command=lambda: [instalar(), analizar_y_generar(), dibujar()], bg="#10b981", fg="white", font=("Arial", 9, "bold")).pack(side="left", padx=10)
 tk.Button(frame_top, text="🔄 REFRESCAR", command=lambda: [analizar_y_generar(), dibujar()], bg="#3b82f6", fg="white").pack(side="left", padx=5)
 tk.Button(frame_top, text="🛠️ REPAIR REPOSITORY", command=reparar_git, bg="#f59e0b", fg="black", font=("Arial", 9, "bold")).pack(side="right", padx=10)
@@ -141,9 +133,8 @@ def dibujar():
     caja.config(state="normal")
     caja.delete("1.0", "end")
     caja.insert("end", f"📍 Carpeta: {CARPETA_SCRIPTS}\n\n", "info")
-    
     if not base_datos:
-        caja.insert("end", "⚠️ No se ven archivos .py aquí. Asegúrate de que el script esté dentro de la carpeta Mis_Scripts.", "err")
+        caja.insert("end", "⚠️ No se ven archivos .py aquí.", "err")
     else:
         for arc, libs in base_datos.items():
             caja.insert("end", f"📄 {arc}\n", "h")
