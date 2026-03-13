@@ -127,15 +127,6 @@ class AplicacionGraficos:
                                     font=('Arial', 11))
         self.lbl_archivo.pack(side='left', padx=10)
         
-        btn_ayuda = tk.Button(toolbar,
-                             text="❓ Ayuda",
-                             command=self.mostrar_ayuda_botones,
-                             bg='#f39c12',
-                             fg='white',
-                             font=('Arial', 10),
-                             padx=10,
-                             cursor='hand2')
-        btn_ayuda.pack(side='right', padx=10)
         
         # ========== NOTEBOOK (PESTAÑAS) ==========
         self.notebook = ttk.Notebook(self.root)
@@ -159,22 +150,7 @@ class AplicacionGraficos:
                                    bd=1, relief='sunken', anchor='w')
         self.status_bar.pack(fill='x', side='bottom', padx=10, pady=5)
     
-    def mostrar_ayuda_botones(self):
-        """Muestra explicación de los botones"""
-        ayuda = """🔍 EXPLICACIÓN DE LOS BOTONES:
-
-🏠 Home - Vista original
-⬅️ ➡️ Back/Forward - Navegar entre vistas (solo si has hecho zoom)
-🔍 Zoom - Selecciona un área para ampliar
-🔧 Pan - Mueve el gráfico
-⚙️ Subplots - Configurar (no usado)
-💾 Guardar - Guarda el gráfico como PNG
-
-✅ El único botón que necesitas es GUARDAR
-Los demás son opcionales para explorar los datos
-"""
-        messagebox.showinfo("Ayuda - Botones", ayuda)
-    
+   
     def mostrar_pantalla_bienvenida(self):
         """Muestra mensaje de bienvenida"""
         mensaje = "📂 Carga un archivo Excel para comenzar\n\nHaz clic en el botón azul 'CARGAR ARCHIVO EXCEL'"
