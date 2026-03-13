@@ -18,28 +18,23 @@ class SuiteDocumental:
         self.nombre_suite = "Suite PDF"
         self.root.title(self.nombre_suite)
 
-        # --- CÁLCULO DE CENTRADO DINÁMICO ---
-        ancho_ventana = 950
-        alto_ventana = 700 # Aumentado ligeramente para las nuevas opciones
-
+        # Dimensiones de la ventana
+        ancho_ventana = 980
+        alto_ventana = 780
         ancho_pantalla = self.root.winfo_screenwidth()
         pos_x = (ancho_pantalla // 2) - (ancho_ventana // 2)
         pos_y = 0 
-
         self.root.geometry(f"{ancho_ventana}x{alto_ventana}+{pos_x}+{pos_y}")
 
         try:
             self.icono = tk.PhotoImage(file='pdf-icono.png')
             self.root.iconphoto(False, self.icono)
-        except Exception:
-            pass
+        except: pass
 
         self.root.configure(bg="#f0f2f5")
-    
         self.archivos_cargados = []
-        self.destino_seleccionado = ""
         self.ruta_pdf_unico = ""
-        self.naming_option = tk.IntVar(value=2) # 1: Nombre, 2: Secuencial
+        self.naming_option = tk.IntVar(value=2)
 
         # --- Sidebar ---
         self.sidebar = tk.Frame(root, bg="#2c3e50", width=220)
@@ -53,386 +48,310 @@ class SuiteDocumental:
         self.crear_menu_btn("📄 Word a PDF", self.mostrar_w_to_p)
         self.crear_menu_btn("📝 PDF a Word", self.mostrar_p_to_w)
         self.crear_menu_btn("✂️ Extractor PDF", self.mostrar_extractor)
-        self.crear_menu_btn("📂 Separador PDF", self.mostrar_separador) # NUEVO
+        self.crear_menu_btn("📂 Separador PDF", self.mostrar_separador)
         self.crear_menu_btn("🔗 Unificador PDF", self.mostrar_unificador)
         self.crear_menu_btn("🗜️ Compresor PDF", self.mostrar_compresor)
         self.crear_menu_btn("🔍 Extraer Texto (OCR)", self.mostrar_ocr)
+        self.crear_menu_btn("🔐 Poner Clave", self.mostrar_proteccion)
+        self.crear_menu_btn("🔓 Quitar Clave", self.mostrar_desproteccion) 
+        self.crear_menu_btn("🔢 Números / Marcas", self.mostrar_marcas)
 
         self.main_frame = tk.Frame(root, bg="white", padx=30, pady=20)
         self.main_frame.pack(side="right", expand=True, fill="both")
-        
         self.mostrar_inicio()
 
     def crear_menu_btn(self, texto, comando):
         btn = tk.Button(self.sidebar, text=texto, command=comando, bg="#34495e", 
-                        fg="white", bd=0, font=("Arial", 10), pady=12, 
+                        fg="white", bd=0, font=("Arial", 10), pady=9, 
                         cursor="hand2", activebackground="#1abc9c")
         btn.pack(fill="x", padx=10, pady=2)
 
     def limpiar_pantalla(self, titulo):
-        for widget in self.main_frame.winfo_children():
-            widget.destroy()
+        for widget in self.main_frame.winfo_children(): widget.destroy()
         self.archivos_cargados = []
-        self.destino_seleccionado = ""
         self.ruta_pdf_unico = ""
-        tk.Label(self.main_frame, text=titulo, font=("Arial", 16, "bold"), 
-                 bg="white", fg="#2c3e50").pack(side="top", anchor="w", pady=(0, 20))
+        tk.Label(self.main_frame, text=titulo, font=("Arial", 16, "bold"), bg="white", fg="#2c3e50").pack(side="top", anchor="w", pady=(0, 20))
 
-    def actualizar_lista_visual(self, lista_ui):
-        lista_ui.delete(0, tk.END)
-        for i, f in enumerate(self.archivos_cargados, 1):
-            lista_ui.insert(tk.END, f"{i}. {os.path.basename(f)}")
+    # --- NUEVA FUNCIÓN: QUITAR CLAVE ---
+    def mostrar_desproteccion(self):
+        self.limpiar_pantalla("🔓 Desproteger PDF (Quitar Contraseña)")
+        tk.Label(self.main_frame, text="Esta función creará una copia del PDF sin contraseña.", bg="white", fg="#666").pack(anchor="w")
+        
+        tk.Button(self.main_frame, text="📂 Seleccionar PDF Protegido", command=self.sel_pdf_simple, bg="#3498db", fg="white").pack(fill="x", pady=10)
+        self.lbl_info = tk.Label(self.main_frame, text="Ningún archivo", bg="white", fg="gray"); self.lbl_info.pack(pady=5)
+        
+        tk.Label(self.main_frame, text="Introduce la contraseña actual:", bg="white", font=("Arial", 10, "bold")).pack(pady=(15, 0))
+        self.ent_pass = tk.Entry(self.main_frame, font=("Arial", 12), show="*")
+        self.ent_pass.pack(fill="x", pady=5)
+        
+        tk.Button(self.main_frame, text="QUITAR PROTECCIÓN Y GUARDAR", bg="#27ae60", fg="white", font=("Arial", 11, "bold"), command=self.run_desproteccion).pack(fill="x", pady=20)
 
-    # --- NUEVA HERRAMIENTA: SEPARADOR PDF ---
+    def run_desproteccion(self):
+        password = self.ent_pass.get()
+        if not self.ruta_pdf_unico or not password:
+            messagebox.showwarning("Error", "Selecciona el PDF e introduce su contraseña."); return
+        
+        out = filedialog.asksaveasfilename(defaultextension=".pdf", initialfile="desprotegido.pdf")
+        if out:
+            try:
+                reader = PdfReader(self.ruta_pdf_unico)
+                if reader.is_encrypted:
+                    reader.decrypt(password)
+                
+                writer = PdfWriter()
+                for page in reader.pages:
+                    writer.add_page(page)
+                
+                with open(out, "wb") as f:
+                    writer.write(f)
+                
+                messagebox.showinfo("Éxito", "Se ha generado una copia sin contraseña.")
+                self.ent_pass.delete(0, tk.END)
+            except Exception:
+                messagebox.showerror("Error", "La contraseña es incorrecta o el archivo no está encriptado.")
+
+    # --- FUNCIÓN: PONER CLAVE ---
+    def mostrar_proteccion(self):
+        self.limpiar_pantalla("🔐 Proteger PDF con Contraseña")
+        tk.Button(self.main_frame, text="📂 Seleccionar PDF", command=self.sel_pdf_simple, bg="#3498db", fg="white").pack(fill="x")
+        self.lbl_info = tk.Label(self.main_frame, text="Ningún archivo", bg="white", fg="gray"); self.lbl_info.pack(pady=5)
+        tk.Label(self.main_frame, text="Escribe la contraseña deseada:", bg="white", font=("Arial", 10, "bold")).pack(pady=(15, 0))
+        self.ent_pass = tk.Entry(self.main_frame, font=("Arial", 12), show="*")
+        self.ent_pass.pack(fill="x", pady=5)
+        tk.Button(self.main_frame, text="ENCRIPTAR Y GUARDAR", bg="#c0392b", fg="white", font=("Arial", 11, "bold"), command=self.run_proteccion).pack(fill="x", pady=20)
+
+    def run_proteccion(self):
+        password = self.ent_pass.get()
+        if not self.ruta_pdf_unico or not password: return
+        out = filedialog.asksaveasfilename(defaultextension=".pdf", initialfile="protegido.pdf")
+        if out:
+            try:
+                reader = PdfReader(self.ruta_pdf_unico); writer = PdfWriter()
+                for page in reader.pages: writer.add_page(page)
+                writer.encrypt(password)
+                with open(out, "wb") as f: writer.write(f)
+                messagebox.showinfo("Éxito", "Contraseña aplicada."); self.ent_pass.delete(0, tk.END)
+            except Exception as e: messagebox.showerror("Error", str(e))
+
+    # --- FUNCIÓN: SEPARADOR PDF ---
     def mostrar_separador(self):
         self.limpiar_pantalla("📂 Separador de PDF")
-        
         tk.Button(self.main_frame, text="📂 Seleccionar PDF Origen", command=self.sel_pdf_separador, bg="#3498db", fg="white").pack(fill="x", pady=5)
-        self.lbl_ext = tk.Label(self.main_frame, text="Ningún archivo seleccionado", bg="white", fg="gray")
-        self.lbl_ext.pack()
-        self.lbl_paginas = tk.Label(self.main_frame, text="", bg="white", font=("Arial", 10, "bold"), fg="#2E86C1")
-        self.lbl_paginas.pack()
-
-        tk.Label(self.main_frame, text="Indica los cortes (ej: 1-2, 3-5, 6):", bg="white", font=("Arial", 10, "bold")).pack(pady=(15, 0))
-        self.ent_cortes = tk.Entry(self.main_frame, font=("Consolas", 11))
-        self.ent_cortes.pack(fill="x", pady=5)
-        
-        tk.Label(self.main_frame, text="Criterio para el nombre:", bg="white", font=("Arial", 10, "bold")).pack(pady=(15, 0))
-        tk.Radiobutton(self.main_frame, text="Nombre original + numeración", variable=self.naming_option, value=2, bg="white").pack(anchor="w")
-        tk.Radiobutton(self.main_frame, text="Detectar 'Apellidos y nombre' (Certificados)", variable=self.naming_option, value=1, bg="white").pack(anchor="w")
-
+        self.lbl_ext_sep = tk.Label(self.main_frame, text="Ningún archivo", bg="white", fg="gray"); self.lbl_ext_sep.pack()
+        self.lbl_pag_sep = tk.Label(self.main_frame, text="", bg="white", font=("Arial", 9, "bold"), fg="#2E86C1"); self.lbl_pag_sep.pack()
+        tk.Label(self.main_frame, text="Indica los cortes (ej: 1-2, 3, 4-6):", bg="white", font=("Arial", 10, "bold")).pack(pady=(10, 0))
+        self.ent_cortes = tk.Entry(self.main_frame, font=("Consolas", 11)); self.ent_cortes.pack(fill="x", pady=5)
+        tk.Radiobutton(self.main_frame, text="Nombre original + nº", variable=self.naming_option, value=2, bg="white").pack(anchor="w")
+        tk.Radiobutton(self.main_frame, text="Detectar 'Apellidos y nombre'", variable=self.naming_option, value=1, bg="white").pack(anchor="w")
         self.chk_abrir = tk.BooleanVar(value=True)
-        tk.Checkbutton(self.main_frame, text="Abrir carpeta al terminar", variable=self.chk_abrir, bg="white").pack(anchor="w", pady=10)
-
-        tk.Button(self.main_frame, text="DIVIDIR Y GUARDAR", bg="#28B463", fg="white", font=("Arial", 11, "bold"), height=2, command=self.run_separador).pack(fill="x", pady=20)
+        tk.Checkbutton(self.main_frame, text="Abrir carpeta al finalizar", variable=self.chk_abrir, bg="white").pack(anchor="w")
+        tk.Button(self.main_frame, text="EJECUTAR DIVISIÓN", bg="#28B463", fg="white", font=("Arial", 11, "bold"), command=self.run_separador).pack(fill="x", pady=15)
 
     def sel_pdf_separador(self):
         f = filedialog.askopenfilename(filetypes=[("PDF", "*.pdf")])
         if f:
             self.ruta_pdf_unico = f
-            self.lbl_ext.config(text=os.path.basename(f), fg="black")
-            try:
-                reader = PdfReader(f)
-                self.lbl_paginas.config(text=f"Páginas totales: {len(reader.pages)}")
-            except:
-                self.lbl_paginas.config(text="Error al leer páginas")
+            self.lbl_ext_sep.config(text=os.path.basename(f), fg="black")
+            self.lbl_pag_sep.config(text=f"Total: {len(PdfReader(f).pages)} páginas")
 
     def run_separador(self):
-        if not self.ruta_pdf_unico or not self.ent_cortes.get():
-            messagebox.showwarning("Atención", "Faltan datos para procesar.")
-            return
-        
+        if not self.ruta_pdf_unico or not self.ent_cortes.get(): return
         dest = filedialog.askdirectory()
         if not dest: return
-
         try:
-            reader = PdfReader(self.ruta_pdf_unico)
-            cortes_raw = self.ent_cortes.get().replace(" ", "").split(",")
-            base_name = os.path.splitext(os.path.basename(self.ruta_pdf_unico))[0]
-
-            for i, corte in enumerate(cortes_raw):
+            reader = PdfReader(self.ruta_pdf_unico); base_name = os.path.splitext(os.path.basename(self.ruta_pdf_unico))[0]
+            cortes = self.ent_cortes.get().replace(" ", "").split(",")
+            for i, c in enumerate(cortes):
                 writer = PdfWriter()
-                paginas = []
-                if "-" in corte:
-                    inicio, fin = map(int, corte.split("-"))
-                    paginas = list(range(inicio-1, fin))
-                else:
-                    paginas = [int(corte) - 1]
-
-                for p in paginas:
-                    writer.add_page(reader.pages[p])
-
-                # Lógica de nombre
-                final_name = ""
+                if "-" in c:
+                    ini, fin = map(int, c.split("-")); pags = list(range(ini-1, fin))
+                else: pags = [int(c)-1]
+                for p in pags: writer.add_page(reader.pages[p])
+                name = ""
                 if self.naming_option.get() == 1:
-                    texto_pag = reader.pages[paginas[0]].extract_text()
-                    match = re.search(r"Apellidos y nombre:\s*([^\n\r]+)", texto_pag)
-                    if match:
-                        final_name = match.group(1).strip().replace(',', '')
-                    else:
-                        final_name = f"{base_name}_{i+1}"
-                else:
-                    final_name = f"{base_name}-{i+1}"
-
-                final_name = re.sub(r'[\\/*?:"<>|]', "", final_name)
-                with open(os.path.join(dest, f"{final_name}.pdf"), "wb") as f_out:
-                    writer.write(f_out)
-
-            messagebox.showinfo("Éxito", "PDF dividido correctamente.")
+                    match = re.search(r"Apellidos y nombre:\s*([^\n\r]+)", reader.pages[pags[0]].extract_text())
+                    name = match.group(1).strip().replace(',', '') if match else f"{base_name}_{i+1}"
+                else: name = f"{base_name}-{i+1}"
+                name = re.sub(r'[\\/*?:"<>|]', "", name)
+                with open(os.path.join(dest, f"{name}.pdf"), "wb") as f_out: writer.write(f_out)
+            messagebox.showinfo("Éxito", "Hecho."); self.ent_cortes.delete(0, tk.END)
             if self.chk_abrir.get(): os.startfile(dest)
-            
-            # Resetear
-            self.ent_cortes.delete(0, tk.END)
-            self.ruta_pdf_unico = ""
-            self.lbl_ext.config(text="Ningún archivo seleccionado", fg="gray")
-            self.lbl_paginas.config(text="")
+        except Exception as e: messagebox.showerror("Error", str(e))
 
-        except Exception as e:
-            messagebox.showerror("Error", f"Revisa los rangos: {str(e)}")
+    # --- FUNCIÓN: NÚMEROS Y MARCAS ---
+    def mostrar_marcas(self):
+        self.limpiar_pantalla("🔢 Numeración y Marcas de Agua")
+        tk.Button(self.main_frame, text="📂 Seleccionar PDF", command=self.sel_pdf_simple, bg="#3498db", fg="white").pack(fill="x")
+        self.lbl_info = tk.Label(self.main_frame, text="Ningún archivo", bg="white", fg="gray"); self.lbl_info.pack(pady=5)
+        tk.Label(self.main_frame, text="Texto a insertar:", bg="white", font=("Arial", 10, "bold")).pack(pady=(10, 0))
+        self.ent_marca = tk.Entry(self.main_frame, font=("Arial", 11)); self.ent_marca.pack(fill="x", pady=5)
+        self.var_num = tk.BooleanVar(value=True)
+        tk.Checkbutton(self.main_frame, text="Añadir nº de página", variable=self.var_num, bg="white").pack(anchor="w")
+        tk.Button(self.main_frame, text="APLICAR Y GUARDAR", bg="#8e44ad", fg="white", font=("Arial", 11, "bold"), command=self.run_marcas).pack(fill="x", pady=20)
 
-    # --- HERRAMIENTA: IMÁGENES A PDF ---
+    def run_marcas(self):
+        if not self.ruta_pdf_unico: return
+        out = filedialog.asksaveasfilename(defaultextension=".pdf", initialfile="marcado.pdf")
+        if out:
+            try:
+                doc = fitz.open(self.ruta_pdf_unico)
+                for i, page in enumerate(doc):
+                    msg = self.ent_marca.get()
+                    if self.var_num.get(): msg += f" | Pág. {i+1} de {len(doc)}"
+                    page.insert_text((50, page.rect.height - 30), msg, fontsize=10, color=(0.7, 0.7, 0.7))
+                doc.save(out); doc.close(); messagebox.showinfo("Éxito", "Marcas añadidas.")
+            except Exception as e: messagebox.showerror("Error", str(e))
+
+    # --- MÉTODOS DE SOPORTE Y RESTO DE HERRAMIENTAS ---
+    def sel_pdf_simple(self):
+        f = filedialog.askopenfilename(filetypes=[("PDF", "*.pdf")])
+        if f:
+            self.ruta_pdf_unico = f
+            self.lbl_info.config(text=os.path.basename(f), fg="black")
+
+    def mostrar_inicio(self):
+        self.limpiar_pantalla("Bienvenid@")
+        tk.Label(self.main_frame, text="Selecciona una herramienta para comenzar.", font=("Arial", 11), bg="white", fg="gray").pack(side="top", anchor="w")
+        tk.Label(self.main_frame, text="RaquelCM", font=("Arial", 10), bg="white", fg="blue").pack(side="bottom", anchor="e")
     def mostrar_img_to_pdf(self):
         self.limpiar_pantalla("📷 Imágenes a PDF")
-        f_btns = tk.Frame(self.main_frame, bg="white")
-        f_btns.pack(fill="x")
+        f_btns = tk.Frame(self.main_frame, bg="white"); f_btns.pack(fill="x")
         tk.Button(f_btns, text="➕ Fotos", command=lambda: self.add_img_files(lista), bg="#3498db", fg="white").pack(side="left", expand=True, fill="x", padx=2)
-        tk.Button(f_btns, text="📁 Carpeta", command=lambda: self.add_img_folder(lista), bg="#2980b9", fg="white").pack(side="left", expand=True, fill="x", padx=2)
-        tk.Button(f_btns, text="❌ Quitar", command=lambda: self.quitar_elemento_sel(lista), bg="#e67e22", fg="white").pack(side="left", expand=True, fill="x", padx=2)
         tk.Button(f_btns, text="🗑️ Vaciar", command=lambda: self.limpiar_lista_gen(lista), bg="#95a5a6", fg="white").pack(side="left", expand=True, fill="x", padx=2)
-        
-        f_mid = tk.Frame(self.main_frame, bg="white")
-        f_mid.pack(fill="both", expand=True, pady=10)
-        lista = tk.Listbox(f_mid, height=12, font=("Arial", 10), selectmode=tk.SINGLE)
-        lista.pack(side="left", fill="both", expand=True)
-        
-        f_arrows = tk.Frame(f_mid, bg="white")
-        f_arrows.pack(side="right", padx=10)
-        tk.Button(f_arrows, text="▲", command=lambda: self.mover_elemento(lista, -1), width=4).pack(pady=5)
-        tk.Button(f_arrows, text="▼", command=lambda: self.mover_elemento(lista, 1), width=4).pack(pady=5)
-        
-        tk.Button(self.main_frame, text="GENERAR ÁLBUM PDF", bg="#e74c3c", fg="white", font=("Arial", 11, "bold"), height=2, command=self.run_img_to_pdf).pack(fill="x", pady=10)
+        lista = tk.Listbox(self.main_frame, height=12); lista.pack(fill="both", expand=True, pady=10)
+        tk.Button(self.main_frame, text="GENERAR PDF", bg="#e74c3c", fg="white", font=("Arial", 11, "bold"), height=2, command=self.run_img_to_pdf).pack(fill="x")
 
     def run_img_to_pdf(self):
         if not self.archivos_cargados: return
-        base = os.path.splitext(os.path.basename(self.archivos_cargados[0]))[0]
-        out = filedialog.asksaveasfilename(defaultextension=".pdf", initialfile=f"Album_{base}.pdf")
+        out = filedialog.asksaveasfilename(defaultextension=".pdf")
         if out:
-            try:
-                imgs = [Image.open(p).convert('RGB') for p in self.archivos_cargados]
-                imgs[0].save(out, save_all=True, append_images=imgs[1:])
-                if messagebox.askyesno("Éxito", "¿Abrir carpeta?"): os.startfile(os.path.dirname(out))
-            except Exception as e: messagebox.showerror("Error", str(e))
+            imgs = [Image.open(p).convert('RGB') for p in self.archivos_cargados]
+            imgs[0].save(out, save_all=True, append_images=imgs[1:])
+            messagebox.showinfo("Éxito", "PDF creado.")
 
-    # --- HERRAMIENTA: UNIFICADOR ---
     def mostrar_unificador(self):
         self.limpiar_pantalla("🔗 Unificador de PDFs")
-        f_top = tk.Frame(self.main_frame, bg="white")
-        f_top.pack(fill="x")
-        tk.Button(f_top, text="➕ Añadir PDFs", command=lambda: self.sel_doc([("PDF", "*.pdf")], lista)).pack(side="left", expand=True, fill="x", padx=2)
-        tk.Button(f_top, text="🗑️ Vaciar", command=lambda: self.limpiar_lista_gen(lista), bg="#95a5a6", fg="white").pack(side="left", expand=True, fill="x", padx=2)
-        
-        f_l = tk.Frame(self.main_frame, bg="white")
-        f_l.pack(fill="both", expand=True, pady=10)
-        lista = tk.Listbox(f_l, height=10, font=("Arial", 10))
-        lista.pack(side="left", fill="both", expand=True)
-        
-        f_b = tk.Frame(f_l, bg="white")
-        f_b.pack(side="right", padx=5)
-        tk.Button(f_b, text="▲", command=lambda: self.mover_elemento(lista, -1), width=3).pack(pady=2)
-        tk.Button(f_b, text="▼", command=lambda: self.mover_elemento(lista, 1), width=3).pack(pady=2)
-        
-        tk.Button(self.main_frame, text="FUSIONAR ARCHIVOS", bg="#8e44ad", fg="white", font=("Arial", 11, "bold"), height=2, command=self.run_uni).pack(fill="x", pady=10)
+        tk.Button(self.main_frame, text="➕ Añadir PDFs", command=lambda: self.sel_doc([("PDF", "*.pdf")], lista)).pack(fill="x")
+        lista = tk.Listbox(self.main_frame, height=10); lista.pack(fill="both", expand=True, pady=10)
+        tk.Button(self.main_frame, text="FUSIONAR", bg="#8e44ad", fg="white", font=("Arial", 11, "bold"), command=self.run_uni).pack(fill="x")
 
     def run_uni(self):
         if not self.archivos_cargados: return
-        base = os.path.splitext(os.path.basename(self.archivos_cargados[0]))[0]
-        out = filedialog.asksaveasfilename(defaultextension=".pdf", initialfile=f"{base}_unificado.pdf")
+        out = filedialog.asksaveasfilename(defaultextension=".pdf")
         if out:
-            try:
-                w = PdfWriter()
-                for p in self.archivos_cargados: w.append(p)
-                with open(out, "wb") as f: w.write(f)
-                if messagebox.askyesno("Éxito", "¿Abrir carpeta?"): os.startfile(os.path.dirname(out))
-            except Exception as e: messagebox.showerror("Error", str(e))
+            w = PdfWriter()
+            for p in self.archivos_cargados: w.append(p)
+            with open(out, "wb") as f: w.write(f)
+            messagebox.showinfo("Éxito", "Unificados.")
 
-    # --- HERRAMIENTA: COMPRESOR ---
     def mostrar_compresor(self):
         self.limpiar_pantalla("🗜️ Compresor de PDF")
         tk.Button(self.main_frame, text="➕ Seleccionar PDF", command=lambda: self.sel_doc([("PDF", "*.pdf")], lista)).pack(fill="x")
         lista = tk.Listbox(self.main_frame, height=8); lista.pack(fill="x", pady=10)
-        tk.Button(self.main_frame, text="COMPRIMIR Y GUARDAR", bg="#2980b9", fg="white", font=("Arial", 11, "bold"), command=self.run_compresor).pack(fill="x", pady=10)
+        tk.Button(self.main_frame, text="COMPRIMIR", bg="#2980b9", fg="white", font=("Arial", 11, "bold"), command=self.run_compresor).pack(fill="x")
 
     def run_compresor(self):
         if not self.archivos_cargados: return
-        ruta_orig = self.archivos_cargados[0]
-        
-        win_calidad = tk.Toplevel(self.root)
-        win_calidad.title("Calidad")
-        win_calidad.geometry("300x200")
-        win_calidad.grab_set()
+        out = filedialog.asksaveasfilename(defaultextension=".pdf")
+        if out:
+            doc = fitz.open(self.archivos_cargados[0])
+            doc.save(out, garbage=4, deflate=True); doc.close()
+            messagebox.showinfo("Éxito", "Comprimido.")
 
-        def aplicar(modo):
-            win_calidad.destroy()
-            out = filedialog.asksaveasfilename(defaultextension=".pdf", initialfile=f"comprimido_{os.path.basename(ruta_orig)}")
-            if not out: return
-            try:
-                doc = fitz.open(ruta_orig)
-                if modo != "alta":
-                    calidad = 50 if modo == "media" else 20
-                    for page in doc:
-                        for img in page.get_images():
-                            xref = img[0]
-                            base = doc.extract_image(xref)
-                            img_pil = Image.open(BytesIO(base["image"]))
-                            if modo == "baja": img_pil.thumbnail((1000, 1000))
-                            new_bytes = BytesIO()
-                            img_pil.save(new_bytes, format="JPEG", quality=calidad, optimize=True)
-                            page.replace_image(xref, stream=new_bytes.getvalue())
-                
-                doc.save(out, garbage=4, deflate=True)
-                doc.close()
-                if messagebox.askyesno("Éxito", "¿Abrir carpeta?"): os.startfile(os.path.dirname(out))
-            except Exception as e: messagebox.showerror("Error", str(e))
-
-        tk.Button(win_calidad, text="ALTA (Estándar)", command=lambda: aplicar("alta"), bg="#ecf0f1", width=25).pack(pady=5)
-        tk.Button(win_calidad, text="MEDIA (Recomendado)", command=lambda: aplicar("media"), bg="#d4e6f1", width=25).pack(pady=5)
-        tk.Button(win_calidad, text="BAJA (Mínimo peso)", command=lambda: aplicar("baja"), bg="#a9cce3", width=25).pack(pady=5)
-
-    # --- HERRAMIENTA: EXTRACTOR ---
     def mostrar_extractor(self):
         self.limpiar_pantalla("✂️ Extractor de Páginas")
-        tk.Button(self.main_frame, text="📂 Seleccionar PDF Origen", command=self.sel_pdf_un, bg="#3498db", fg="white").pack(fill="x", pady=5)
-        self.lbl_ext_ext = tk.Label(self.main_frame, text="Ningún archivo", bg="white", fg="gray"); self.lbl_ext_ext.pack()
-        self.lbl_paginas_ext = tk.Label(self.main_frame, text="", bg="white", font=("Arial", 10, "bold")); self.lbl_paginas_ext.pack()
-        
-        tk.Label(self.main_frame, text="Rango a extraer (ej: 1, 3, 5-10):", bg="white", fg="blue").pack(pady=5)
+        tk.Button(self.main_frame, text="📂 Seleccionar PDF", command=self.sel_pdf_simple, bg="#3498db", fg="white").pack(fill="x")
+        self.lbl_info = tk.Label(self.main_frame, text="Ningún archivo", bg="white", fg="gray"); self.lbl_info.pack()
+        tk.Label(self.main_frame, text="Rango (ej: 1, 3, 5-10):", bg="white").pack()
         self.ent_r = tk.Entry(self.main_frame, font=("Arial", 11)); self.ent_r.pack(fill="x", pady=5)
-        tk.Button(self.main_frame, text="EXTRAER Y GUARDAR UN PDF", bg="#e67e22", fg="white", font=("Arial", 11, "bold"), command=self.run_ext).pack(fill="x", pady=10)
-
-    def sel_pdf_un(self):
-        f = filedialog.askopenfilename(filetypes=[("PDF", "*.pdf")])
-        if f:
-            self.ruta_pdf_unico = f
-            self.lbl_ext_ext.config(text=os.path.basename(f))
-            self.lbl_paginas_ext.config(text=f"Total: {len(PdfReader(f).pages)} páginas")
+        tk.Button(self.main_frame, text="EXTRAER", bg="#e67e22", fg="white", command=self.run_ext).pack(fill="x")
 
     def run_ext(self):
         if not self.ruta_pdf_unico: return
-        out = filedialog.asksaveasfilename(defaultextension=".pdf", initialfile="extraido.pdf")
+        out = filedialog.asksaveasfilename(defaultextension=".pdf")
         if out:
-            try:
-                reader = PdfReader(self.ruta_pdf_unico); writer = PdfWriter()
-                partes = self.ent_r.get().replace(" ", "").split(",")
-                for p in partes:
-                    if "-" in p:
-                        i, f = map(int, p.split("-"))
-                        for n in range(i, f+1): writer.add_page(reader.pages[n-1])
-                    else: writer.add_page(reader.pages[int(p)-1])
-                with open(out, "wb") as f: writer.write(f)
-                if messagebox.askyesno("Éxito", "¿Abrir carpeta?"): os.startfile(os.path.dirname(out))
-            except Exception as e: messagebox.showerror("Error", "Revisa el rango")
+            reader = PdfReader(self.ruta_pdf_unico); writer = PdfWriter()
+            partes = self.ent_r.get().replace(" ", "").split(",")
+            for p in partes:
+                if "-" in p:
+                    i, f = map(int, p.split("-"))
+                    for n in range(i, f+1): writer.add_page(reader.pages[n-1])
+                else: writer.add_page(reader.pages[int(p)-1])
+            with open(out, "wb") as f: writer.write(f)
+            messagebox.showinfo("Éxito", "Extraído.")
 
-    # --- HERRAMIENTAS DE TEXTO ---
     def mostrar_ocr(self):
         self.limpiar_pantalla("🔍 Extraer Texto (OCR)")
         tk.Button(self.main_frame, text="➕ Seleccionar PDF", command=lambda: self.sel_doc([("PDF", "*.pdf")], lista)).pack(fill="x")
         lista = tk.Listbox(self.main_frame, height=4); lista.pack(fill="x", pady=10)
         self.txt_res = tk.Text(self.main_frame, height=12, bg="#f8f9fa"); self.txt_res.pack(fill="both", expand=True)
-        f_b = tk.Frame(self.main_frame, bg="white"); f_b.pack(fill="x", pady=5)
-        tk.Button(f_b, text="🔍 EXTRAER", command=self.run_ocr, bg="#16a085", fg="white").pack(side="left", expand=True, fill="x")
-        tk.Button(f_b, text="💾 GUARDAR .TXT", command=self.guardar_texto_txt, bg="#34495e", fg="white").pack(side="left", expand=True, fill="x")
+        tk.Button(self.main_frame, text="🔍 EXTRAER", command=self.run_ocr, bg="#16a085", fg="white").pack(fill="x", pady=5)
 
     def run_ocr(self):
         if not self.archivos_cargados: return
-        try:
-            doc = fitz.open(self.archivos_cargados[0]); texto = ""
-            for pag in doc: texto += pag.get_text() + "\n" + "-"*20 + "\n"
-            self.txt_res.delete("1.0", tk.END); self.txt_res.insert(tk.END, texto); doc.close()
-        except Exception as e: messagebox.showerror("Error", str(e))
+        doc = fitz.open(self.archivos_cargados[0]); texto = ""
+        for pag in doc: texto += pag.get_text() + "\n"
+        self.txt_res.delete("1.0", tk.END); self.txt_res.insert(tk.END, texto); doc.close()
 
-    def guardar_texto_txt(self):
-        cont = self.txt_res.get("1.0", tk.END).strip()
-        if not cont: return
-        out = filedialog.asksaveasfilename(defaultextension=".txt", initialfile="texto.txt")
-        if out:
-            with open(out, "w", encoding="utf-8") as f: f.write(cont)
-            if messagebox.askyesno("Éxito", "¿Abrir carpeta?"): os.startfile(os.path.dirname(out))
-
-    # --- FUNCIONES COMUNES ---
     def sel_doc(self, tipos, l_ui):
         fs = filedialog.askopenfilenames(filetypes=tipos)
-        if fs:
-            self.archivos_cargados.extend(list(fs))
-            self.actualizar_lista_visual(l_ui)
+        if fs: self.archivos_cargados.extend(list(fs)); self.actualizar_lista_visual(l_ui)
 
     def add_img_files(self, l_ui):
-        fs = filedialog.askopenfilenames(filetypes=[("Imágenes", "*.jpg *.jpeg *.png *.bmp")])
-        if fs:
-            self.archivos_cargados.extend(list(fs))
-            self.actualizar_lista_visual(l_ui)
+        fs = filedialog.askopenfilenames(filetypes=[("Imágenes", "*.jpg *.png")])
+        if fs: self.archivos_cargados.extend(list(fs)); self.actualizar_lista_visual(l_ui)
 
-    def add_img_folder(self, l_ui):
-        folder = filedialog.askdirectory()
-        if folder:
-            exts = {'.jpg', '.jpeg', '.png', '.bmp'}
-            for f in sorted(os.listdir(folder)):
-                if os.path.splitext(f)[1].lower() in exts:
-                    self.archivos_cargados.append(os.path.join(folder, f))
-            self.actualizar_lista_visual(l_ui)
-
-    def quitar_elemento_sel(self, l_ui):
-        sel = l_ui.curselection()
-        if sel:
-            idx = sel[0]
-            del self.archivos_cargados[idx]
-            l_ui.delete(idx)
-
-    def mover_elemento(self, l_ui, d):
-        sel = l_ui.curselection()
-        if not sel: return
-        i = sel[0]; ni = i + d
-        if 0 <= ni < len(self.archivos_cargados):
-            self.archivos_cargados[i], self.archivos_cargados[ni] = self.archivos_cargados[ni], self.archivos_cargados[i]
-            self.actualizar_lista_visual(l_ui); l_ui.selection_set(ni)
+    def actualizar_lista_visual(self, l_ui):
+        l_ui.delete(0, tk.END)
+        for f in self.archivos_cargados: l_ui.insert(tk.END, os.path.basename(f))
 
     def limpiar_lista_gen(self, l_ui):
-        self.archivos_cargados = []
-        l_ui.delete(0, tk.END)
-
-    def mostrar_inicio(self):
-        self.limpiar_pantalla("Bienvenid@")
-        tk.Label(self.main_frame, text="Selecciona una herramienta para comenzar.", 
-                 font=("Arial", 11), bg="white", fg="gray").pack(side="top", anchor="w")
-
-    def sel_dest(self, lbl):
-        self.destino_seleccionado = filedialog.askdirectory()
-        if self.destino_seleccionado: lbl.config(text=f"📂 {os.path.basename(self.destino_seleccionado)}", fg="blue")
+        self.archivos_cargados = []; l_ui.delete(0, tk.END)
 
     def mostrar_p_to_img(self):
         self.limpiar_pantalla("🖼️ PDF a Imágenes")
-        tk.Button(self.main_frame, text="➕ Seleccionar PDF", command=lambda: self.sel_doc([("PDF", "*.pdf")], lista)).pack(fill="x")
+        tk.Button(self.main_frame, text="➕ PDF", command=lambda: self.sel_doc([("PDF", "*.pdf")], lista)).pack(fill="x")
         lista = tk.Listbox(self.main_frame, height=4); lista.pack(fill="x", pady=10)
-        lbl = tk.Label(self.main_frame, text="Sin destino", fg="red", bg="white"); lbl.pack()
-        tk.Button(self.main_frame, text="📁 Carpeta Salida", command=lambda: self.sel_dest(lbl)).pack(fill="x")
-        tk.Button(self.main_frame, text="CONVERTIR", bg="#27ae60", fg="white", command=self.run_p2img).pack(fill="x", pady=10)
+        tk.Button(self.main_frame, text="CONVERTIR", bg="#27ae60", fg="white", command=self.run_p2img).pack(fill="x")
 
     def run_p2img(self):
-        if not self.archivos_cargados or not self.destino_seleccionado: return
-        doc = fitz.open(self.archivos_cargados[0])
-        for i, pag in enumerate(doc): pag.get_pixmap().save(os.path.join(self.destino_seleccionado, f"pag_{i+1}.png"))
-        doc.close(); os.startfile(self.destino_seleccionado)
+        if not self.archivos_cargados: return
+        dest = filedialog.askdirectory()
+        if dest:
+            doc = fitz.open(self.archivos_cargados[0])
+            for i, pag in enumerate(doc): pag.get_pixmap().save(os.path.join(dest, f"pag_{i+1}.png"))
+            doc.close(); os.startfile(dest)
 
     def mostrar_w_to_p(self):
         self.limpiar_pantalla("📄 Word a PDF")
         tk.Button(self.main_frame, text="➕ Word", command=lambda: self.sel_doc([("Word", "*.docx")], lista)).pack(fill="x")
         lista = tk.Listbox(self.main_frame, height=4); lista.pack(fill="x", pady=10)
-        lbl = tk.Label(self.main_frame, text="Sin destino", fg="red", bg="white"); lbl.pack()
-        tk.Button(self.main_frame, text="📁 Carpeta Salida", command=lambda: self.sel_dest(lbl)).pack(fill="x")
-        tk.Button(self.main_frame, text="CONVERTIR", bg="#c0392b", fg="white", command=self.run_w2p).pack(fill="x", pady=10)
+        tk.Button(self.main_frame, text="CONVERTIR", bg="#c0392b", fg="white", command=self.run_w2p).pack(fill="x")
 
     def run_w2p(self):
-        if not self.archivos_cargados or not self.destino_seleccionado: return
-        pythoncom.CoInitialize()
-        word = win32com.client.DispatchEx("Word.Application")
-        for r in self.archivos_cargados:
-            doc = word.Documents.Open(os.path.abspath(r), ReadOnly=1)
-            doc.ExportAsFixedFormat(os.path.join(self.destino_seleccionado, os.path.splitext(os.path.basename(r))[0] + ".pdf"), 17)
-            doc.Close(0)
-        word.Quit(); messagebox.showinfo("Éxito", "Hecho.")
+        if not self.archivos_cargados: return
+        dest = filedialog.askdirectory()
+        if dest:
+            pythoncom.CoInitialize(); word = win32com.client.DispatchEx("Word.Application")
+            for r in self.archivos_cargados:
+                doc = word.Documents.Open(os.path.abspath(r), ReadOnly=1)
+                doc.ExportAsFixedFormat(os.path.join(dest, os.path.splitext(os.path.basename(r))[0] + ".pdf"), 17)
+                doc.Close(0)
+            word.Quit(); messagebox.showinfo("Éxito", "Hecho.")
 
     def mostrar_p_to_w(self):
         self.limpiar_pantalla("📝 PDF a Word")
         tk.Button(self.main_frame, text="➕ PDF", command=lambda: self.sel_doc([("PDF", "*.pdf")], lista)).pack(fill="x")
         lista = tk.Listbox(self.main_frame, height=4); lista.pack(fill="x", pady=10)
-        lbl = tk.Label(self.main_frame, text="Sin destino", fg="red", bg="white"); lbl.pack()
-        tk.Button(self.main_frame, text="📁 Carpeta Salida", command=lambda: self.sel_dest(lbl)).pack(fill="x")
-        tk.Button(self.main_frame, text="CONVERTIR", bg="#2980b9", fg="white", command=self.run_p2w).pack(fill="x", pady=10)
+        tk.Button(self.main_frame, text="CONVERTIR", bg="#2980b9", fg="white", command=self.run_p2w).pack(fill="x")
 
     def run_p2w(self):
-        if not self.archivos_cargados or not self.destino_seleccionado: return
-        for r in self.archivos_cargados:
-            cv = Converter(r); cv.convert(os.path.join(self.destino_seleccionado, os.path.splitext(os.path.basename(r))[0] + ".docx")); cv.close()
-        messagebox.showinfo("Éxito", "Hecho.")
+        if not self.archivos_cargados: return
+        dest = filedialog.askdirectory()
+        if dest:
+            for r in self.archivos_cargados:
+                cv = Converter(r); cv.convert(os.path.join(dest, os.path.splitext(os.path.basename(r))[0] + ".docx")); cv.close()
+            messagebox.showinfo("Éxito", "Hecho.")
 
 if __name__ == "__main__":
     root = tk.Tk()
