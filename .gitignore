@@ -1,36 +1,36 @@
-# --- Entorno de Python (Básico) ---
+# --- Python (Basura temporal) ---
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# --- Herramientas de Imagen y QR ---
-# Ignora las imágenes descargadas o QRs generados si son temporales
-# (Ajusta los nombres si usas carpetas específicas)
-*.png
-*.jpg
-*.jpeg
-!Resultados_Graficos/*.png
+# --- Binarios y Ejecutables (IMPORTANTE) ---
+# Esto evita que FFmpeg u otros .exe se suban a GitHub
+*.exe
+*.dll
+*.so
 
-# --- Generador de Documentos (PDF/DOCX) ---
-# Ignora los resultados finales, quédate solo con el código que los crea
-*.pdf
-*.docx
-# Archivos temporales que crean Word/Acrobat al abrir archivos
-~$*.docx
-*.tmp
-
-# --- Descargas de YouTube / Video ---
+# --- Archivos de Salida de tus Scripts ---
+# Ignoramos los resultados (videos, música, pdfs) para que no pesen en la nube
 *.mp4
 *.mkv
 *.webm
 *.mp3
+*.pdf
+*.docx
+*.png
+*.jpg
+*.jpeg
 
-# --- Basura de Windows ---
+# --- Excepción: Si quieres guardar iconos o imágenes de diseño ---
+# Crea una carpeta llamada 'assets' y mete ahí los logos; Git SI los verá
+!assets/*.png
+!assets/*.jpg
+
+# --- Basura de Sistema y Logs ---
 Thumbs.db
 desktop.ini
-
-# --- Txt---
+*.log
 error_log.txt
-
-# --- Carpetas de Estructura ---
-gs/
-*.exe
+.vscode/
+.idea/
