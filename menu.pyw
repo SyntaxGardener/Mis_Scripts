@@ -67,7 +67,7 @@ def ejecutar_herramienta(ruta_archivo, ventana_principal):
 class MenuFinalPerfecto:
     def __init__(self, root):
         self.root = root
-        self.root.title("BIBLIOTECA DE HERRAMIENTAS - PORTABLE GIT SYNC (Raquel)")
+        self.root.title("SCRIPT HUB - GIT SYNC (Raquel)")
         ancho = 800
         alto = 800
         pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
