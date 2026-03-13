@@ -1,21 +1,55 @@
+# -*- coding: utf-8 -*-
 import tkinter as tk
 from tkinter import messagebox, filedialog
 import yt_dlp
 import os
+import sys
 
+# ==========================================================
+# 1. CONFIGURACIÓN DE RUTAS INTELIGENTES (USB / PC)
+# ==========================================================
+def obtener_ruta_ffmpeg():
+    ruta_actual = os.path.dirname(os.path.abspath(__file__))
+    padre = os.path.abspath(os.path.join(ruta_actual, ".."))
+    
+    # 1. BUSCAR EN USB (Cualquier versión de WinPython)
+    # Listamos las carpetas en TRABAJO_PORTABLE para ver cuál tienes
+    try:
+        for carpeta in os.listdir(padre):
+            if carpeta.startswith("WPy64-"):
+                usb_path = os.path.join(padre, carpeta, "python")
+                if os.path.exists(os.path.join(usb_path, "ffmpeg.exe")):
+                    return usb_path
+    except:
+        pass
+
+    # 2. BUSCAR EN PC (Carpeta Herramientas al lado de Mis_Scripts)
+    pc_path = os.path.normpath(os.path.join(ruta_actual, "..", "Herramientas"))
+    if os.path.exists(os.path.join(pc_path, "ffmpeg.exe")):
+        return pc_path
+
+    return None
+
+# Guardamos la ruta encontrada para usarla luego
+RUTA_FFMPEG_FINAL = obtener_ruta_ffmpeg()
+
+# ==========================================================
+# 2. LÓGICA DE DESCARGA
+# ==========================================================
 def descargar():
     url = entry_url.get()
     folder = entry_folder.get()
     opcion = var_opcion.get()
     
     if not url or not folder:
-        messagebox.showwarning("Error", "Por favor, introduce la URL y selecciona una carpeta.")
+        messagebox.showwarning("Error", "Introduce la URL y selecciona carpeta.")
         return
 
-    # Configuración para forzar MP4 y elegir resolución/audio
     ydl_opts = {
         'outtmpl': f'{folder}/%(title)s.%(ext)s',
         'noplaylist': True,
+        # AQUÍ USAMOS LA RUTA INTELIGENTE
+        'ffmpeg_location': RUTA_FFMPEG_FINAL, 
     }
 
     if opcion == "mp3":
@@ -28,18 +62,19 @@ def descargar():
             }],
         })
     else:
-        # Forzamos extensión mp4 buscando la mejor combinación de video mp4 + audio m4a
         res = "720" if opcion == "720p" else "1080"
         ydl_opts['format'] = f'bestvideo[height<={res}][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-        messagebox.showinfo("Éxito", "¡Archivo guardado correctamente!")
+        messagebox.showinfo("Éxito", "¡Archivo guardado!")
     except Exception as e:
-        messagebox.showerror("Error", f"Algo salió mal: {e}")
+        messagebox.showerror("Error", f"Fallo: {e}")
 
-# --- Funciones para el Menú del Botón Derecho ---
+# ==========================================================
+# 3. INTERFAZ GRÁFICA (IGUAL QUE ANTES)
+# ==========================================================
 def mostrar_menu(event):
     menu_contextual.post(event.x_root, event.y_root)
 
@@ -47,8 +82,7 @@ def pegar_texto():
     try:
         texto = root.clipboard_get()
         entry_url.insert(tk.INSERT, texto)
-    except:
-        pass
+    except: pass
 
 def seleccionar_carpeta():
     dir_seleccionado = filedialog.askdirectory()
@@ -56,34 +90,16 @@ def seleccionar_carpeta():
         entry_folder.delete(0, tk.END)
         entry_folder.insert(0, dir_seleccionado)
 
-# --- Configuración de la Ventana ---
 root = tk.Tk()
-root.title("Descargador YouTube")
-ancho_ventana = 500
-alto_ventana = 400
-distancia_superior = 50
+root.title("Descargador YouTube Portable")
+root.geometry(f"500x450+{(root.winfo_screenwidth()//2)-250}+50")
 
-# USAR 'root' en lugar de 'ventana'
-ancho_pantalla = root.winfo_screenwidth()
-
-# Calcular la posición X para que esté centrada
-posicion_x = (ancho_pantalla // 2) - (ancho_ventana // 2)
-
-# Aplicar la geometría a 'root'
-root.geometry(f"{ancho_ventana}x{alto_ventana}+{posicion_x}+{distancia_superior}")
-
-# Menú contextual (Botón derecho)
 menu_contextual = tk.Menu(root, tearoff=0)
-menu_contextual.add_command(label="Pequeño tip: Ctrl+V también funciona")
-menu_contextual.add_separator()
 menu_contextual.add_command(label="Pegar enlace", command=pegar_texto)
 
-# Interfaz
 tk.Label(root, text="Enlace de YouTube:", font=("Arial", 10, "bold")).pack(pady=10)
 entry_url = tk.Entry(root, width=55)
 entry_url.pack(pady=5)
-
-# Vinculamos el botón derecho al cuadro de texto
 entry_url.bind("<Button-3>", mostrar_menu)
 
 tk.Label(root, text="Carpeta donde guardar:", font=("Arial", 10, "bold")).pack(pady=10)
