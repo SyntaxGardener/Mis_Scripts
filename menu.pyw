@@ -94,7 +94,7 @@ class MenuFinalPerfecto:
         title_container = tk.Frame(header_frame, bg="#121212")
         title_container.pack(side="left")
 
-        tk.Label(title_container, text="MIS HERRAMIENTAS", fg="#ffffff", bg="#121212", 
+        tk.Label(title_container, text="TOOLBOX & SYNC", fg="#ffffff", bg="#121212", 
                  font=("Segoe UI Semibold", 18)).pack(side="left", padx=(10, 5))
 
         self.github_btn = tk.Label(title_container, text="  SyntaxGardener", 
