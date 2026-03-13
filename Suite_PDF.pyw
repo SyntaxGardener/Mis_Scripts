@@ -8,6 +8,8 @@ import win32com.client
 import pythoncom
 from pdf2docx import Converter
 from pypdf import PdfReader, PdfWriter
+import re
+import subprocess
 from io import BytesIO
 
 class SuiteDocumental:
@@ -18,35 +20,26 @@ class SuiteDocumental:
 
         # --- CÁLCULO DE CENTRADO DINÁMICO ---
         ancho_ventana = 950
-        alto_ventana = 750
+        alto_ventana = 700 # Aumentado ligeramente para las nuevas opciones
 
-        # Obtener el ancho y alto de TU pantalla real
         ancho_pantalla = self.root.winfo_screenwidth()
-        alto_pantalla = self.root.winfo_screenheight()
-
-        # Calcular X para que esté centrado (Ancho total - Ancho ventana) / 2
         pos_x = (ancho_pantalla // 2) - (ancho_ventana // 2)
-        
-        # Mantener Y en 0 para que esté pegada arriba como querías
         pos_y = 0 
 
-        # Aplicar la geometría: "950x750+X+0"
         self.root.geometry(f"{ancho_ventana}x{alto_ventana}+{pos_x}+{pos_y}")
 
-        # --- AÑADIR ICONO PNG ---
         try:
-            # Reemplaza 'icono.png' por el nombre real de tu archivo
             self.icono = tk.PhotoImage(file='pdf-icono.png')
             self.root.iconphoto(False, self.icono)
         except Exception:
-            # Si la imagen no existe, el programa seguirá abriéndose sin error
             pass
-        # ------------------------
+
         self.root.configure(bg="#f0f2f5")
     
         self.archivos_cargados = []
         self.destino_seleccionado = ""
         self.ruta_pdf_unico = ""
+        self.naming_option = tk.IntVar(value=2) # 1: Nombre, 2: Secuencial
 
         # --- Sidebar ---
         self.sidebar = tk.Frame(root, bg="#2c3e50", width=220)
@@ -60,6 +53,7 @@ class SuiteDocumental:
         self.crear_menu_btn("📄 Word a PDF", self.mostrar_w_to_p)
         self.crear_menu_btn("📝 PDF a Word", self.mostrar_p_to_w)
         self.crear_menu_btn("✂️ Extractor PDF", self.mostrar_extractor)
+        self.crear_menu_btn("📂 Separador PDF", self.mostrar_separador) # NUEVO
         self.crear_menu_btn("🔗 Unificador PDF", self.mostrar_unificador)
         self.crear_menu_btn("🗜️ Compresor PDF", self.mostrar_compresor)
         self.crear_menu_btn("🔍 Extraer Texto (OCR)", self.mostrar_ocr)
@@ -80,7 +74,7 @@ class SuiteDocumental:
             widget.destroy()
         self.archivos_cargados = []
         self.destino_seleccionado = ""
-        # Cambiamos pack(anchor="w") por uno con un pequeño margen superior pero fijo arriba
+        self.ruta_pdf_unico = ""
         tk.Label(self.main_frame, text=titulo, font=("Arial", 16, "bold"), 
                  bg="white", fg="#2c3e50").pack(side="top", anchor="w", pady=(0, 20))
 
@@ -88,6 +82,93 @@ class SuiteDocumental:
         lista_ui.delete(0, tk.END)
         for i, f in enumerate(self.archivos_cargados, 1):
             lista_ui.insert(tk.END, f"{i}. {os.path.basename(f)}")
+
+    # --- NUEVA HERRAMIENTA: SEPARADOR PDF ---
+    def mostrar_separador(self):
+        self.limpiar_pantalla("📂 Separador de PDF")
+        
+        tk.Button(self.main_frame, text="📂 Seleccionar PDF Origen", command=self.sel_pdf_separador, bg="#3498db", fg="white").pack(fill="x", pady=5)
+        self.lbl_ext = tk.Label(self.main_frame, text="Ningún archivo seleccionado", bg="white", fg="gray")
+        self.lbl_ext.pack()
+        self.lbl_paginas = tk.Label(self.main_frame, text="", bg="white", font=("Arial", 10, "bold"), fg="#2E86C1")
+        self.lbl_paginas.pack()
+
+        tk.Label(self.main_frame, text="Indica los cortes (ej: 1-2, 3-5, 6):", bg="white", font=("Arial", 10, "bold")).pack(pady=(15, 0))
+        self.ent_cortes = tk.Entry(self.main_frame, font=("Consolas", 11))
+        self.ent_cortes.pack(fill="x", pady=5)
+        
+        tk.Label(self.main_frame, text="Criterio para el nombre:", bg="white", font=("Arial", 10, "bold")).pack(pady=(15, 0))
+        tk.Radiobutton(self.main_frame, text="Nombre original + numeración", variable=self.naming_option, value=2, bg="white").pack(anchor="w")
+        tk.Radiobutton(self.main_frame, text="Detectar 'Apellidos y nombre' (Certificados)", variable=self.naming_option, value=1, bg="white").pack(anchor="w")
+
+        self.chk_abrir = tk.BooleanVar(value=True)
+        tk.Checkbutton(self.main_frame, text="Abrir carpeta al terminar", variable=self.chk_abrir, bg="white").pack(anchor="w", pady=10)
+
+        tk.Button(self.main_frame, text="DIVIDIR Y GUARDAR", bg="#28B463", fg="white", font=("Arial", 11, "bold"), height=2, command=self.run_separador).pack(fill="x", pady=20)
+
+    def sel_pdf_separador(self):
+        f = filedialog.askopenfilename(filetypes=[("PDF", "*.pdf")])
+        if f:
+            self.ruta_pdf_unico = f
+            self.lbl_ext.config(text=os.path.basename(f), fg="black")
+            try:
+                reader = PdfReader(f)
+                self.lbl_paginas.config(text=f"Páginas totales: {len(reader.pages)}")
+            except:
+                self.lbl_paginas.config(text="Error al leer páginas")
+
+    def run_separador(self):
+        if not self.ruta_pdf_unico or not self.ent_cortes.get():
+            messagebox.showwarning("Atención", "Faltan datos para procesar.")
+            return
+        
+        dest = filedialog.askdirectory()
+        if not dest: return
+
+        try:
+            reader = PdfReader(self.ruta_pdf_unico)
+            cortes_raw = self.ent_cortes.get().replace(" ", "").split(",")
+            base_name = os.path.splitext(os.path.basename(self.ruta_pdf_unico))[0]
+
+            for i, corte in enumerate(cortes_raw):
+                writer = PdfWriter()
+                paginas = []
+                if "-" in corte:
+                    inicio, fin = map(int, corte.split("-"))
+                    paginas = list(range(inicio-1, fin))
+                else:
+                    paginas = [int(corte) - 1]
+
+                for p in paginas:
+                    writer.add_page(reader.pages[p])
+
+                # Lógica de nombre
+                final_name = ""
+                if self.naming_option.get() == 1:
+                    texto_pag = reader.pages[paginas[0]].extract_text()
+                    match = re.search(r"Apellidos y nombre:\s*([^\n\r]+)", texto_pag)
+                    if match:
+                        final_name = match.group(1).strip().replace(',', '')
+                    else:
+                        final_name = f"{base_name}_{i+1}"
+                else:
+                    final_name = f"{base_name}-{i+1}"
+
+                final_name = re.sub(r'[\\/*?:"<>|]', "", final_name)
+                with open(os.path.join(dest, f"{final_name}.pdf"), "wb") as f_out:
+                    writer.write(f_out)
+
+            messagebox.showinfo("Éxito", "PDF dividido correctamente.")
+            if self.chk_abrir.get(): os.startfile(dest)
+            
+            # Resetear
+            self.ent_cortes.delete(0, tk.END)
+            self.ruta_pdf_unico = ""
+            self.lbl_ext.config(text="Ningún archivo seleccionado", fg="gray")
+            self.lbl_paginas.config(text="")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Revisa los rangos: {str(e)}")
 
     # --- HERRAMIENTA: IMÁGENES A PDF ---
     def mostrar_img_to_pdf(self):
@@ -166,7 +247,7 @@ class SuiteDocumental:
         ruta_orig = self.archivos_cargados[0]
         
         win_calidad = tk.Toplevel(self.root)
-        win_calidad.title("Nivel de Compresión")
+        win_calidad.title("Calidad")
         win_calidad.geometry("300x200")
         win_calidad.grab_set()
 
@@ -201,19 +282,19 @@ class SuiteDocumental:
     def mostrar_extractor(self):
         self.limpiar_pantalla("✂️ Extractor de Páginas")
         tk.Button(self.main_frame, text="📂 Seleccionar PDF Origen", command=self.sel_pdf_un, bg="#3498db", fg="white").pack(fill="x", pady=5)
-        self.lbl_ext = tk.Label(self.main_frame, text="Ningún archivo", bg="white", fg="gray"); self.lbl_ext.pack()
-        self.lbl_paginas = tk.Label(self.main_frame, text="", bg="white", font=("Arial", 10, "bold")); self.lbl_paginas.pack()
+        self.lbl_ext_ext = tk.Label(self.main_frame, text="Ningún archivo", bg="white", fg="gray"); self.lbl_ext_ext.pack()
+        self.lbl_paginas_ext = tk.Label(self.main_frame, text="", bg="white", font=("Arial", 10, "bold")); self.lbl_paginas_ext.pack()
         
-        tk.Label(self.main_frame, text="Ejemplo: 1, 3, 5-10", bg="white", fg="blue").pack(pady=5)
+        tk.Label(self.main_frame, text="Rango a extraer (ej: 1, 3, 5-10):", bg="white", fg="blue").pack(pady=5)
         self.ent_r = tk.Entry(self.main_frame, font=("Arial", 11)); self.ent_r.pack(fill="x", pady=5)
-        tk.Button(self.main_frame, text="EXTRAER", bg="#e67e22", fg="white", font=("Arial", 11, "bold"), command=self.run_ext).pack(fill="x", pady=10)
+        tk.Button(self.main_frame, text="EXTRAER Y GUARDAR UN PDF", bg="#e67e22", fg="white", font=("Arial", 11, "bold"), command=self.run_ext).pack(fill="x", pady=10)
 
     def sel_pdf_un(self):
         f = filedialog.askopenfilename(filetypes=[("PDF", "*.pdf")])
         if f:
             self.ruta_pdf_unico = f
-            self.lbl_ext.config(text=os.path.basename(f))
-            self.lbl_paginas.config(text=f"Total: {len(PdfReader(f).pages)} páginas")
+            self.lbl_ext_ext.config(text=os.path.basename(f))
+            self.lbl_paginas_ext.config(text=f"Total: {len(PdfReader(f).pages)} páginas")
 
     def run_ext(self):
         if not self.ruta_pdf_unico: return
@@ -257,7 +338,7 @@ class SuiteDocumental:
             with open(out, "w", encoding="utf-8") as f: f.write(cont)
             if messagebox.askyesno("Éxito", "¿Abrir carpeta?"): os.startfile(os.path.dirname(out))
 
-    # --- FUNCIONES COMUNES DE SOPORTE ---
+    # --- FUNCIONES COMUNES ---
     def sel_doc(self, tipos, l_ui):
         fs = filedialog.askopenfilenames(filetypes=tipos)
         if fs:
@@ -299,12 +380,10 @@ class SuiteDocumental:
         l_ui.delete(0, tk.END)
 
     def mostrar_inicio(self):
-        self.limpiar_pantalla("Bienvenido")
-        # Quitamos el expand=True para que se pegue arriba
-        tk.Label(self.main_frame, text="Selecciona una herramienta en el menú de la izquierda para comenzar.", 
+        self.limpiar_pantalla("Bienvenid@")
+        tk.Label(self.main_frame, text="Selecciona una herramienta para comenzar.", 
                  font=("Arial", 11), bg="white", fg="gray").pack(side="top", anchor="w")
 
-    # --- OTROS MÉTODOS (Word/Imágenes) ---
     def sel_dest(self, lbl):
         self.destino_seleccionado = filedialog.askdirectory()
         if self.destino_seleccionado: lbl.config(text=f"📂 {os.path.basename(self.destino_seleccionado)}", fg="blue")
