@@ -3,12 +3,20 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
 import os
+import time
 
 try:
     from moviepy import AudioFileClip, concatenate_audioclips
     MOVIEPY_OK = True
 except ImportError:
     MOVIEPY_OK = False
+
+# Intentar importar pygame para reproducción de audio
+try:
+    import pygame
+    PYGAME_OK = True
+except ImportError:
+    PYGAME_OK = False
 
 class EditorAudio:
     def __init__(self, root):
@@ -27,7 +35,9 @@ class EditorAudio:
             'success': '#4CAF50',
             'error': '#f44336',
             'warning': '#ff9800',
-            'audio_accent': '#FF6B6B'  # Color para audio (rojizo)
+            'audio_accent': '#FF6B6B',  # Color para audio (rojizo)
+            'player_bg': '#2c3e50',      # Fondo del reproductor
+            'player_fg': '#ecf0f1'       # Texto del reproductor
         }
         
         self.root.configure(bg=self.colors['bg'])
@@ -40,18 +50,38 @@ class EditorAudio:
         self.procesando = False
         self.modo = "cortar"  # "cortar" o "unir"
         
+        # Variables para reproducción
+        self.reproduciendo = False
+        self.pausado = False
+        self.tiempo_actual = 0
+        self.hilo_reproduccion = None
+        self.clip_audio = None
+        
+        # Inicializar pygame si está disponible
+        if PYGAME_OK:
+            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=4096)
+        
         if not MOVIEPY_OK:
             messagebox.showerror("Error", 
                                "MoviePy no está instalado.\nEjecuta: pip install moviepy")
             root.destroy()
             return
         
+        if not PYGAME_OK:
+            respuesta = messagebox.askyesno("Advertencia", 
+                                          "pygame no está instalado. No podrás reproducir audio.\n"
+                                          "¿Quieres instalarlo? (pip install pygame)\n\n"
+                                          "¿Continuar sin reproducción?")
+            if not respuesta:
+                root.destroy()
+                return
+        
         self.crear_interfaz()
     
     def configurar_ventana(self):
         """Configura la ventana centrada y a 20px del borde superior"""
-        ancho = 700
-        alto = 650
+        ancho = 750  # Un poco más ancho para el reproductor
+        alto = 750   # Un poco más alto para el reproductor
         margen_superior = 20
         
         ancho_pantalla = self.root.winfo_screenwidth()
@@ -59,7 +89,7 @@ class EditorAudio:
         y = margen_superior
         
         self.root.geometry(f'{ancho}x{alto}+{x}+{y}')
-        self.root.minsize(650, 600)
+        self.root.minsize(700, 700)
         self.root.resizable(True, True)
     
     def crear_interfaz(self):
@@ -67,6 +97,7 @@ class EditorAudio:
         style = ttk.Style()
         style.theme_use('clam')
         style.configure('TProgressbar', background=self.colors['audio_accent'])
+        style.configure('Horizontal.TScale', background=self.colors['bg'])
         
         # Frame principal
         main_frame = tk.Frame(self.root, bg=self.colors['bg'], padx=20, pady=15)
@@ -170,7 +201,7 @@ class EditorAudio:
         self.estado_label.pack(pady=5)
     
     def crear_panel_cortar(self):
-        """Crea el panel para cortar audio"""
+        """Crea el panel para cortar audio con reproductor"""
         # === SELECCIÓN DE AUDIO ===
         audio_frame = tk.Frame(self.cortar_frame, bg='white', relief='solid', bd=1, padx=10, pady=10)
         audio_frame.pack(fill=tk.X, pady=5)
@@ -209,6 +240,132 @@ class EditorAudio:
                                         anchor='w')
         self.cortar_info_label.pack(anchor='w', pady=2)
         
+        # === REPRODUCTOR DE AUDIO ===
+        if PYGAME_OK:
+            player_frame = tk.Frame(self.cortar_frame, bg=self.colors['player_bg'], relief='solid', bd=1, padx=10, pady=10)
+            player_frame.pack(fill=tk.X, pady=5)
+            
+            tk.Label(player_frame, text="🎧 REPRODUCTOR", 
+                    font=('Arial', 11, 'bold'),
+                    bg=self.colors['player_bg'], fg='white').pack(anchor='w')
+            
+            # Barra de progreso de reproducción
+            progreso_repro_frame = tk.Frame(player_frame, bg=self.colors['player_bg'])
+            progreso_repro_frame.pack(fill=tk.X, pady=5)
+            
+            self.tiempo_actual_label = tk.Label(progreso_repro_frame, 
+                                               text="00:00", 
+                                               bg=self.colors['player_bg'],
+                                               fg='white',
+                                               font=('Arial', 9))
+            self.tiempo_actual_label.pack(side=tk.LEFT)
+            
+            self.repro_scale = tk.Scale(progreso_repro_frame,
+                                       from_=0,
+                                       to=100,
+                                       orient=tk.HORIZONTAL,
+                                       length=400,
+                                       showvalue=False,
+                                       bg=self.colors['player_bg'],
+                                       troughcolor='#34495e',
+                                       highlightbackground=self.colors['player_bg'],
+                                       fg='white')
+            self.repro_scale.pack(side=tk.LEFT, padx=10, fill=tk.X, expand=True)
+            self.repro_scale.bind('<Button-1>', self.click_repro_scale)
+            self.repro_scale.bind('<B1-Motion>', self.arrastrar_repro_scale)
+            self.repro_scale.bind('<ButtonRelease-1>', self.soltar_repro_scale)
+            
+            self.tiempo_total_label = tk.Label(progreso_repro_frame,
+                                             text="00:00",
+                                             bg=self.colors['player_bg'],
+                                             fg='white',
+                                             font=('Arial', 9))
+            self.tiempo_total_label.pack(side=tk.RIGHT)
+            
+            # Botones de control
+            controles_frame = tk.Frame(player_frame, bg=self.colors['player_bg'])
+            controles_frame.pack(pady=5)
+            
+            self.play_btn = tk.Button(controles_frame,
+                                     text="▶️ Play",
+                                     bg='#27ae60',
+                                     fg='white',
+                                     font=('Arial', 10, 'bold'),
+                                     padx=15,
+                                     pady=5,
+                                     relief='flat',
+                                     cursor='hand2',
+                                     state='disabled',
+                                     command=self.reproducir_audio)
+            self.play_btn.pack(side=tk.LEFT, padx=2)
+            
+            self.pause_btn = tk.Button(controles_frame,
+                                      text="⏸️ Pausa",
+                                      bg='#f39c12',
+                                      fg='white',
+                                      font=('Arial', 10, 'bold'),
+                                      padx=15,
+                                      pady=5,
+                                      relief='flat',
+                                      cursor='hand2',
+                                      state='disabled',
+                                      command=self.pausar_audio)
+            self.pause_btn.pack(side=tk.LEFT, padx=2)
+            
+            self.stop_btn = tk.Button(controles_frame,
+                                     text="⏹️ Stop",
+                                     bg='#c0392b',
+                                     fg='white',
+                                     font=('Arial', 10, 'bold'),
+                                     padx=15,
+                                     pady=5,
+                                     relief='flat',
+                                     cursor='hand2',
+                                     state='disabled',
+                                     command=self.detener_audio)
+            self.stop_btn.pack(side=tk.LEFT, padx=2)
+            
+            # Botón para marcar tiempos
+            marcar_frame = tk.Frame(player_frame, bg=self.colors['player_bg'])
+            marcar_frame.pack(pady=5)
+            
+            tk.Button(marcar_frame,
+                     text="⏪ Marcar como INICIO",
+                     bg='#3498db',
+                     fg='white',
+                     font=('Arial', 9, 'bold'),
+                     padx=10,
+                     pady=3,
+                     relief='flat',
+                     cursor='hand2',
+                     command=self.marcar_como_inicio).pack(side=tk.LEFT, padx=2)
+            
+            tk.Button(marcar_frame,
+                     text="⏩ Marcar como FIN",
+                     bg='#9b59b6',
+                     fg='white',
+                     font=('Arial', 9, 'bold'),
+                     padx=10,
+                     pady=3,
+                     relief='flat',
+                     cursor='hand2',
+                     command=self.marcar_como_fin).pack(side=tk.LEFT, padx=2)
+            
+            tk.Label(marcar_frame,
+                    text="(durante la reproducción)",
+                    bg=self.colors['player_bg'],
+                    fg='#bdc3c7',
+                    font=('Arial', 8)).pack(side=tk.LEFT, padx=5)
+        else:
+            # Mensaje si pygame no está instalado
+            warn_frame = tk.Frame(self.cortar_frame, bg='#fff3cd', relief='solid', bd=1, padx=10, pady=10)
+            warn_frame.pack(fill=tk.X, pady=5)
+            tk.Label(warn_frame,
+                    text="⚠️ Reproductor no disponible. Instala pygame para previsualizar audio.",
+                    bg='#fff3cd',
+                    fg='#856404',
+                    font=('Arial', 10)).pack()
+        
         # === TIEMPOS DE CORTE ===
         tiempos_frame = tk.Frame(self.cortar_frame, bg='white', relief='solid', bd=1, padx=10, pady=10)
         tiempos_frame.pack(fill=tk.X, pady=5)
@@ -231,7 +388,7 @@ class EditorAudio:
         self.fin_entry.grid(row=1, column=1, padx=5, pady=2)
         self.fin_entry.insert(0, "10")
         
-        # Barra deslizadora
+        # Barra deslizadora para selección de rango
         self.cortar_scale = tk.Scale(tiempos_frame,
                                     from_=0,
                                     to=100,
@@ -259,7 +416,7 @@ class EditorAudio:
         
         # Ayuda
         tk.Label(tiempos_frame,
-                text="💡 Puedes escribir los segundos o usar la barra",
+                text="💡 Puedes escribir los segundos, usar la barra o marcar mientras reproduces",
                 bg='white',
                 fg='#666666',
                 font=('Arial', 8)).pack(pady=2)
@@ -400,6 +557,9 @@ class EditorAudio:
         )
         
         if archivo:
+            # Detener reproducción actual si existe
+            self.detener_audio()
+            
             self.audio_actual = archivo
             nombre = os.path.basename(archivo)
             self.cortar_audio_label.config(text=f"🎵 {nombre}", fg=self.colors['fg'])
@@ -408,7 +568,7 @@ class EditorAudio:
                 clip = AudioFileClip(archivo)
                 duracion = clip.duration
                 self.duracion_actual = duracion
-                clip.close()
+                self.clip_audio = clip
                 
                 minutos = int(duracion // 60)
                 segundos = int(duracion % 60)
@@ -422,10 +582,142 @@ class EditorAudio:
                 
                 self.cortar_scale.configure(to=int(duracion))
                 
+                # Actualizar reproductor
+                if PYGAME_OK:
+                    self.repro_scale.configure(to=int(duracion))
+                    minutos_total = int(duracion // 60)
+                    segundos_total = int(duracion % 60)
+                    self.tiempo_total_label.config(text=f"{minutos_total:02d}:{segundos_total:02d}")
+                    
+                    # Habilitar controles
+                    self.play_btn.config(state='normal')
+                    self.pause_btn.config(state='normal')
+                    self.stop_btn.config(state='normal')
+                
                 self.actualizar_estado_boton()
                 
             except Exception as e:
-                self.cortar_info_label.config(text=f"❌ Error al leer audio", fg='red')
+                self.cortar_info_label.config(text=f"❌ Error al leer audio: {str(e)}", fg='red')
+    
+    # === FUNCIONES DEL REPRODUCTOR ===
+    def reproducir_audio(self):
+        if not self.audio_actual or not PYGAME_OK:
+            return
+        
+        if self.reproduciendo and self.pausado:
+            # Reanudar
+            pygame.mixer.music.unpause()
+            self.pausado = False
+            self.play_btn.config(text='▶️ Play', bg='#27ae60')
+            self.estado_label.config(text="🎵 Reproduciendo...", fg=self.colors['warning'])
+        elif self.reproduciendo:
+            # Ya está reproduciendo
+            pass
+        else:
+            # Comenzar nueva reproducción
+            try:
+                pygame.mixer.music.load(self.audio_actual)
+                pygame.mixer.music.play(start=self.tiempo_actual)
+                self.reproduciendo = True
+                self.pausado = False
+                self.play_btn.config(text='▶️ Play', bg='#27ae60')
+                self.estado_label.config(text="🎵 Reproduciendo...", fg=self.colors['warning'])
+                
+                # Iniciar hilo para actualizar la barra de progreso
+                if self.hilo_reproduccion is None or not self.hilo_reproduccion.is_alive():
+                    self.hilo_reproduccion = threading.Thread(target=self.actualizar_progreso_reproduccion)
+                    self.hilo_reproduccion.daemon = True
+                    self.hilo_reproduccion.start()
+                    
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo reproducir el audio:\n{str(e)}")
+    
+    def pausar_audio(self):
+        if self.reproduciendo and not self.pausado and PYGAME_OK:
+            pygame.mixer.music.pause()
+            self.pausado = True
+            self.play_btn.config(text='▶️ Reanudar', bg='#27ae60')
+            self.estado_label.config(text="⏸️ Pausado", fg=self.colors['warning'])
+    
+    def detener_audio(self):
+        if self.reproduciendo and PYGAME_OK:
+            pygame.mixer.music.stop()
+            self.reproduciendo = False
+            self.pausado = False
+            self.tiempo_actual = 0
+            self.play_btn.config(text='▶️ Play', bg='#27ae60')
+            self.estado_label.config(text="⏹️ Detenido", fg=self.colors['warning'])
+            self.repro_scale.set(0)
+            self.tiempo_actual_label.config(text="00:00")
+    
+    def actualizar_progreso_reproduccion(self):
+        """Hilo para actualizar la barra de progreso durante la reproducción"""
+        while self.reproduciendo and not self.pausado:
+            if PYGAME_OK and pygame.mixer.music.get_busy():
+                pos = pygame.mixer.music.get_pos() / 1000  # Posición en segundos
+                self.tiempo_actual = pos
+                
+                # Actualizar GUI
+                self.root.after(0, self.actualizar_interfaz_reproduccion, pos)
+                
+                time.sleep(0.1)
+            else:
+                if self.reproduciendo and not self.pausado:
+                    # La reproducción terminó
+                    self.root.after(0, self.detener_audio)
+                break
+    
+    def actualizar_interfaz_reproduccion(self, pos):
+        """Actualiza la interfaz durante la reproducción"""
+        if self.reproduciendo:
+            self.repro_scale.set(int(pos))
+            
+            minutos = int(pos // 60)
+            segundos = int(pos % 60)
+            self.tiempo_actual_label.config(text=f"{minutos:02d}:{segundos:02d}")
+    
+    def click_repro_scale(self, event):
+        """Cuando se hace clic en la barra de reproducción"""
+        if self.reproduciendo:
+            self.pausar_audio()
+    
+    def arrastrar_repro_scale(self, event):
+        """Mientras se arrastra la barra de reproducción"""
+        valor = self.repro_scale.get()
+        minutos = int(valor // 60)
+        segundos = int(valor % 60)
+        self.tiempo_actual_label.config(text=f"{minutos:02d}:{segundos:02d}")
+    
+    def soltar_repro_scale(self, event):
+        """Al soltar la barra de reproducción"""
+        if self.audio_actual and PYGAME_OK:
+            self.tiempo_actual = self.repro_scale.get()
+            
+            if self.reproduciendo:
+                # Reiniciar reproducción en la nueva posición
+                pygame.mixer.music.stop()
+                pygame.mixer.music.load(self.audio_actual)
+                pygame.mixer.music.play(start=self.tiempo_actual)
+                self.reproduciendo = True
+                self.pausado = False
+    
+    def marcar_como_inicio(self):
+        """Marca el tiempo actual como inicio del corte"""
+        if self.reproduciendo:
+            tiempo = self.tiempo_actual
+            self.inicio_entry.delete(0, tk.END)
+            self.inicio_entry.insert(0, f"{tiempo:.1f}")
+            self.actualizar_labels_tiempo()
+            self.estado_label.config(text=f"⏪ Inicio marcado en {tiempo:.1f}s", fg='green')
+    
+    def marcar_como_fin(self):
+        """Marca el tiempo actual como fin del corte"""
+        if self.reproduciendo:
+            tiempo = self.tiempo_actual
+            self.fin_entry.delete(0, tk.END)
+            self.fin_entry.insert(0, f"{tiempo:.1f}")
+            self.actualizar_labels_tiempo()
+            self.estado_label.config(text=f"⏩ Fin marcado en {tiempo:.1f}s", fg='green')
     
     def agregar_audio_unir(self):
         archivos = filedialog.askopenfilenames(
@@ -520,13 +812,20 @@ class EditorAudio:
         if hasattr(self, 'duracion_actual') and self.duracion_actual > 0:
             valor = self.cortar_scale.get()
             
-            # Determinar qué campo actualizar
-            if self.ultimo_scale_move == 'inicio':
-                self.inicio_entry.delete(0, tk.END)
-                self.inicio_entry.insert(0, f"{valor:.1f}")
-            else:
-                self.fin_entry.delete(0, tk.END)
-                self.fin_entry.insert(0, f"{valor:.1f}")
+            # Determinar qué campo actualizar basado en la posición del ratón
+            # Esto es un poco complejo, simplificamos: actualizamos el que esté más cerca
+            try:
+                inicio = float(self.inicio_entry.get())
+                fin = float(self.fin_entry.get())
+                
+                if abs(valor - inicio) < abs(valor - fin):
+                    self.inicio_entry.delete(0, tk.END)
+                    self.inicio_entry.insert(0, f"{valor:.1f}")
+                else:
+                    self.fin_entry.delete(0, tk.END)
+                    self.fin_entry.insert(0, f"{valor:.1f}")
+            except:
+                pass
             
             self.actualizar_labels_tiempo()
     
@@ -657,7 +956,7 @@ class EditorAudio:
                 clip = AudioFileClip(audio_path)
                 clips.append(clip)
             
-            self.estado_label.config(text="�ls Uniendo audios...", fg=self.colors['warning'])
+            self.estado_label.config(text="🔗 Uniendo audios...", fg=self.colors['warning'])
             audio_final = concatenate_audioclips(clips)
             
             # Guardar
