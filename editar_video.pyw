@@ -14,9 +14,9 @@ class EditorVideoCompleto:
     def __init__(self, root):
         self.root = root
         self.root.title("🎬 Editor de Video Completo")
-        ancho = 800
-        alto = 725
-        margen_superior = 2
+        ancho = 700
+        alto = 600
+        margen_superior = 10
         
         ancho_pantalla = self.root.winfo_screenwidth()
         x = (ancho_pantalla - ancho) // 2
