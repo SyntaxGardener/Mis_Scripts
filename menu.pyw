@@ -16,7 +16,7 @@ COLORES = {
     "ADMINISTRACIÓN": "#f1c40f",
     "CLASES": "#9b59b6",
     "AULA": "#2ecc71",
-    "AUDIO & VÍDEO": "#ffa500",
+    "AUDIO & VÍDEO": "#ff7f24",
     "OTROS": "#e0e0e0"
 }
 FAV_FILE = "favoritos.txt"
