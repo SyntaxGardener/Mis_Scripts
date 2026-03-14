@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+Script para añadir texto y carátulas a videos
+Totalmente portable - funciona desde USB
+"""
 
 import tkinter as tk
 from tkinter import ttk, filedialog, colorchooser, messagebox
@@ -10,9 +14,9 @@ from moviepy import VideoFileClip, TextClip, CompositeVideoClip, ImageClip, conc
 class AñadirTextoVideo:
     def __init__(self, root):
         self.root = root
-        self.root.title("📝 Añadir Texto o Carátulas a Video")
-        ancho = 600
-        alto = 700
+        self.root.title("📝 Añadir Carátulas o Texto simple a Video")
+        ancho = 650
+        alto = 780
         margen_superior = 20
         
         ancho_pantalla = self.root.winfo_screenwidth()
@@ -20,40 +24,32 @@ class AñadirTextoVideo:
         y = margen_superior
         
         self.root.geometry(f'{ancho}x{alto}+{x}+{y}')
+        self.root.resizable(False, False)  # Evitar que se redimensione
         
         self.video_path = None
         self.caratula_path = None
         self.contra_path = None
         self.color_seleccionado = 'white'
         
-        # Obtener la ruta de la fuente incluida
-        self.ruta_fuente = self.obtener_ruta_fuente()
+        # Mapeo de nombres de fuente a archivos
+        self.mapa_fuentes = {
+            "Arial": "arial.ttf",
+            "Arial Bold": "arialbd.ttf",
+            "Calibri": "calibri.ttf",
+            "Times New Roman": "times.ttf",
+            "Verdana": "verdana.ttf",
+            "Verdana Bold": "verdanab.ttf",
+            "Verdana Italic": "verdanai.ttf",
+            "Verdana Bold Italic": "verdanaz.ttf",
+            "Trebuchet MS": "trebuc.ttf",
+            "Trebuchet MS Bold": "trebucbd.ttf",
+            "Segoe UI": "segoeui.ttf",
+            "Segoe UI Bold": "segoeuib.ttf",
+            "Open Sans": "OpenSans.ttf",
+            "Rockwell": "ROCK.TTF"
+        }
         
         self.crear_interfaz()
-    
-    def obtener_ruta_fuente(self):
-        """Busca la fuente en la carpeta fonts/ del script"""
-        # Obtener la ruta del directorio donde está el script
-        ruta_script = os.path.dirname(os.path.abspath(__file__))
-        
-        # Posibles nombres de fuente (para que funcione con diferentes descargas)
-        posibles_fuentes = [
-            os.path.join(ruta_script, "fonts", "OpenSans.ttf"),
-            os.path.join(ruta_script, "fonts", "OpenSans-Regular.ttf"),
-            os.path.join(ruta_script, "fonts", "arial.ttf"),
-            os.path.join(ruta_script, "fonts", "LiberationSans-Regular.ttf"),
-            os.path.join(ruta_script, "fonts", "DejaVuSans.ttf"),
-        ]
-        
-        for fuente in posibles_fuentes:
-            if os.path.exists(fuente):
-                return fuente
-        
-        # Si no encuentra ninguna, mostrar advertencia y usar None
-        messagebox.showwarning("Fuente no encontrada", 
-                               "No se encontró ninguna fuente en la carpeta 'fonts'.\n"
-                               "El texto podría no mostrarse correctamente.")
-        return None
     
     def crear_interfaz(self):
         # Crear pestañas
@@ -71,18 +67,12 @@ class AñadirTextoVideo:
         self.crear_pestana_caratula()
     
     def crear_pestana_texto(self):
-        # Título
+        # Título principal
         tk.Label(self.tab_texto, text="📝 AÑADIR TEXTO A VIDEO", 
                 font=('Arial', 16, 'bold'), fg='#4CAF50').pack(pady=10)
         
-        # Mostrar fuente que se está usando
-        if self.ruta_fuente:
-            nombre_fuente = os.path.basename(self.ruta_fuente)
-            tk.Label(self.tab_texto, text=f"✅ Usando fuente: {nombre_fuente}", 
-                    fg='green', font=('Arial', 9)).pack()
-        else:
-            tk.Label(self.tab_texto, text="⚠️ Usando fuente del sistema (puede fallar)", 
-                    fg='orange', font=('Arial', 9)).pack()
+        # Mostrar información de fuentes disponibles
+        self.mostrar_info_fuentes()
         
         # Selector de video
         video_frame = tk.Frame(self.tab_texto)
@@ -95,7 +85,7 @@ class AñadirTextoVideo:
         btn_frame.pack(fill=tk.X, pady=5)
         
         self.video_label = tk.Label(btn_frame, text="Ningún video seleccionado", 
-                                   fg='gray', width=40, anchor='w')
+                                   fg='gray', width=45, anchor='w')
         self.video_label.pack(side=tk.LEFT)
         
         tk.Button(btn_frame, text="Seleccionar Video", 
@@ -107,18 +97,18 @@ class AñadirTextoVideo:
         self.video_info.pack(anchor='w')
         
         # Separador
-        tk.Frame(self.tab_texto, height=1, bg='#ccc').pack(fill=tk.X, padx=20, pady=15)
+        tk.Frame(self.tab_texto, height=1, bg='#ccc').pack(fill=tk.X, padx=20, pady=10)
         
         # Configuración del texto
         config_frame = tk.Frame(self.tab_texto)
-        config_frame.pack(padx=20, pady=10, fill=tk.X)
+        config_frame.pack(padx=20, pady=5, fill=tk.X)
         
         # Texto a añadir
         tk.Label(config_frame, text="📝 Texto:", 
                 font=('Arial', 11)).grid(row=0, column=0, sticky='w', pady=5)
         
-        self.texto_entry = tk.Entry(config_frame, width=30, font=('Arial', 11))
-        self.texto_entry.grid(row=0, column=1, columnspan=3, pady=5, padx=5)
+        self.texto_entry = tk.Entry(config_frame, width=35, font=('Arial', 11))
+        self.texto_entry.grid(row=0, column=1, columnspan=3, pady=5, padx=5, sticky='w')
         self.texto_entry.insert(0, "¡Hola Mundo!")
         
         # Posición
@@ -128,73 +118,130 @@ class AñadirTextoVideo:
         self.posicion = ttk.Combobox(config_frame, 
                                      values=['center', 'top', 'bottom', 'left', 'right'],
                                      width=15)
-        self.posicion.grid(row=1, column=1, pady=5, padx=5)
+        self.posicion.grid(row=1, column=1, pady=5, padx=5, sticky='w')
         self.posicion.set('center')
         
         # Tamaño
         tk.Label(config_frame, text="🔤 Tamaño:", 
                 font=('Arial', 11)).grid(row=2, column=0, sticky='w', pady=5)
         
-        self.tamaño = tk.Scale(config_frame, from_=20, to=100, orient=tk.HORIZONTAL, length=200)
-        self.tamaño.grid(row=2, column=1, columnspan=2, pady=5, padx=5)
+        self.tamaño = tk.Scale(config_frame, from_=8, to=100, orient=tk.HORIZONTAL, length=250)
+        self.tamaño.grid(row=2, column=1, columnspan=2, pady=5, padx=5, sticky='w')
         self.tamaño.set(50)
         
-        # Color (fila 3)
-        tk.Label(config_frame, text="🎨 Color:", 
+        # Fuente
+        tk.Label(config_frame, text="🔤 Fuente:", 
                 font=('Arial', 11)).grid(row=3, column=0, sticky='w', pady=5)
         
-        self.color_btn = tk.Button(config_frame, text="Seleccionar Color", 
+        # Lista de fuentes disponibles ordenadas
+        fuentes_disponibles = sorted(self.mapa_fuentes.keys())
+        
+        self.fuente = ttk.Combobox(config_frame, 
+                                   values=fuentes_disponibles,
+                                   width=25)
+        self.fuente.grid(row=3, column=1, columnspan=2, pady=5, padx=5, sticky='w')
+        self.fuente.set('Arial')
+        
+        # Color
+        tk.Label(config_frame, text="🎨 Color:", 
+                font=('Arial', 11)).grid(row=4, column=0, sticky='w', pady=5)
+        
+        color_frame = tk.Frame(config_frame)
+        color_frame.grid(row=4, column=1, columnspan=2, pady=5, padx=5, sticky='w')
+        
+        self.color_btn = tk.Button(color_frame, text="Seleccionar Color", 
                                   bg='#2196F3', fg='white',
                                   command=self.seleccionar_color)
-        self.color_btn.grid(row=3, column=1, pady=5, padx=5)
+        self.color_btn.pack(side=tk.LEFT)
         
-        self.color_label = tk.Label(config_frame, text="white", bg='white', width=10)
-        self.color_label.grid(row=3, column=2, pady=5)
+        self.color_label = tk.Label(color_frame, text="  ", bg='white', width=5, relief=tk.SUNKEN)
+        self.color_label.pack(side=tk.LEFT, padx=5)
         
-        # Color de borde (fila 4)
+        # Borde
         tk.Label(config_frame, text="⚫ Borde:", 
-                font=('Arial', 11)).grid(row=4, column=0, sticky='w', pady=5)
+                font=('Arial', 11)).grid(row=5, column=0, sticky='w', pady=5)
         
         self.borde_var = tk.BooleanVar(value=True)
         tk.Checkbutton(config_frame, text="Añadir borde negro", 
-                      variable=self.borde_var).grid(row=4, column=1, columnspan=2, sticky='w')
+                      variable=self.borde_var).grid(row=5, column=1, columnspan=2, sticky='w')
         
-        # Duración (fila 5 y 6)
+        # Duración
         tk.Label(config_frame, text="⏱️ Duración:", 
-                font=('Arial', 11)).grid(row=5, column=0, sticky='w', pady=5)
+                font=('Arial', 11)).grid(row=6, column=0, sticky='w', pady=5)
         
         self.duracion_completa = tk.BooleanVar(value=True)
         tk.Radiobutton(config_frame, text="Video completo", 
-                      variable=self.duracion_completa, value=True).grid(row=5, column=1, sticky='w')
-        tk.Radiobutton(config_frame, text="Duración personalizada:", 
-                      variable=self.duracion_completa, value=False).grid(row=6, column=1, sticky='w')
+                      variable=self.duracion_completa, value=True).grid(row=6, column=1, sticky='w')
         
-        self.duracion_entry = tk.Entry(config_frame, width=10)
-        self.duracion_entry.grid(row=6, column=2, sticky='w')
+        duracion_frame = tk.Frame(config_frame)
+        duracion_frame.grid(row=7, column=1, columnspan=2, sticky='w')
+        
+        tk.Radiobutton(duracion_frame, text="Duración personalizada:", 
+                      variable=self.duracion_completa, value=False).pack(side=tk.LEFT)
+        
+        self.duracion_entry = tk.Entry(duracion_frame, width=8)
+        self.duracion_entry.pack(side=tk.LEFT, padx=5)
         self.duracion_entry.insert(0, "5")
         self.duracion_entry.config(state='disabled')
         
-        def toggle_duracion():
+        tk.Label(duracion_frame, text="seg").pack(side=tk.LEFT)
+        
+        def toggle_duracion(*args):
             if self.duracion_completa.get():
                 self.duracion_entry.config(state='disabled')
             else:
                 self.duracion_entry.config(state='normal')
         
-        self.duracion_completa.trace('w', lambda *args: toggle_duracion())
+        self.duracion_completa.trace('w', toggle_duracion)
         
         # Botón de procesar
-        tk.Button(self.tab_texto, text="📝 AÑADIR TEXTO", 
-                 bg='#4CAF50', fg='white', font=('Arial', 14, 'bold'),
-                 padx=30, pady=10, cursor='hand2',
-                 command=self.procesar_texto).pack(pady=20)
+        btn_procesar = tk.Button(self.tab_texto, text="📝 AÑADIR TEXTO", 
+                                bg='#4CAF50', fg='white', font=('Arial', 14, 'bold'),
+                                padx=30, pady=10, cursor='hand2',
+                                command=self.procesar_texto)
+        btn_procesar.pack(pady=15)
         
         # Barra de progreso
         self.progreso = ttk.Progressbar(self.tab_texto, mode='indeterminate')
         self.progreso.pack(fill=tk.X, padx=20, pady=5)
         
-        self.estado_label = tk.Label(self.tab_texto, text="Listo", fg='green')
-        self.estado_label.pack()
+        # Estado
+        self.estado_label = tk.Label(self.tab_texto, text="✅ Listo", fg='green', font=('Arial', 10))
+        self.estado_label.pack(pady=5)
     
+    def mostrar_info_fuentes(self):
+        """Muestra información sobre las fuentes disponibles"""
+        ruta_script = os.path.dirname(os.path.abspath(__file__))
+        carpeta_fonts = os.path.join(ruta_script, "fonts")
+        
+        if os.path.exists(carpeta_fonts):
+            fuentes_encontradas = []
+            for archivo in os.listdir(carpeta_fonts):
+                if archivo.lower().endswith('.ttf'):
+                    fuentes_encontradas.append(archivo)
+            
+            if fuentes_encontradas:
+                info_text = f"✅ {len(fuentes_encontradas)} fuentes disponibles en carpeta 'fonts'"
+                tk.Label(self.tab_texto, text=info_text, fg='green', 
+                        font=('Arial', 9)).pack()
+            else:
+                tk.Label(self.tab_texto, text="⚠️ Carpeta 'fonts' vacía", 
+                        fg='orange', font=('Arial', 9)).pack()
+        else:
+            tk.Label(self.tab_texto, text="⚠️ Crear carpeta 'fonts' junto al script", 
+                    fg='orange', font=('Arial', 9)).pack()
+    
+    def formatear_duracion(self, segundos):
+        """Convierte segundos a formato hh:mm:ss"""
+        horas = int(segundos // 3600)
+        minutos = int((segundos % 3600) // 60)
+        segs = int(segundos % 60)
+        
+        if horas > 0:
+            return f"{horas:02d}:{minutos:02d}:{segs:02d}"
+        else:
+            return f"{minutos:02d}:{segs:02d}"
+        
     def crear_pestana_caratula(self):
         # Título
         tk.Label(self.tab_caratula, text="🎬 AÑADIR CARÁTULA Y CONTRAPORTADA", 
@@ -221,9 +268,14 @@ class AñadirTextoVideo:
         
         # Duración carátula
         tk.Label(frame_caratula, text="⏱️ Duración (seg):").grid(row=1, column=0, sticky='w', pady=5)
-        self.caratula_duracion = tk.Entry(frame_caratula, width=10)
-        self.caratula_duracion.grid(row=1, column=1, pady=5, padx=5, sticky='w')
+        
+        duracion_frame1 = tk.Frame(frame_caratula)
+        duracion_frame1.grid(row=1, column=1, sticky='w', pady=5)
+        
+        self.caratula_duracion = tk.Entry(duracion_frame1, width=8)
+        self.caratula_duracion.pack(side=tk.LEFT)
         self.caratula_duracion.insert(0, "3")
+        tk.Label(duracion_frame1, text="seg").pack(side=tk.LEFT, padx=5)
         
         # Separador
         ttk.Separator(self.tab_caratula, orient='horizontal').pack(fill=tk.X, padx=20, pady=10)
@@ -249,9 +301,14 @@ class AñadirTextoVideo:
         
         # Duración contraportada
         tk.Label(frame_contra, text="⏱️ Duración (seg):").grid(row=1, column=0, sticky='w', pady=5)
-        self.contra_duracion = tk.Entry(frame_contra, width=10)
-        self.contra_duracion.grid(row=1, column=1, pady=5, padx=5, sticky='w')
+        
+        duracion_frame2 = tk.Frame(frame_contra)
+        duracion_frame2.grid(row=1, column=1, sticky='w', pady=5)
+        
+        self.contra_duracion = tk.Entry(duracion_frame2, width=8)
+        self.contra_duracion.pack(side=tk.LEFT)
         self.contra_duracion.insert(0, "3")
+        tk.Label(duracion_frame2, text="seg").pack(side=tk.LEFT, padx=5)
         
         # Opciones adicionales
         opciones_frame = tk.LabelFrame(self.tab_caratula, text="Opciones", 
@@ -263,17 +320,26 @@ class AñadirTextoVideo:
                       variable=self.usar_mismo_video).pack(anchor='w')
         
         # Botón procesar
-        tk.Button(self.tab_caratula, text="🎬 AÑADIR IMÁGENES", 
-                 bg='#FF6B6B', fg='white', font=('Arial', 12, 'bold'),
-                 padx=20, pady=10, cursor='hand2',
-                 command=self.procesar_caratula).pack(pady=20)
+        btn_procesar = tk.Button(self.tab_caratula, text="🎬 AÑADIR IMÁGENES", 
+                                bg='#FF6B6B', fg='white', font=('Arial', 12, 'bold'),
+                                padx=20, pady=10, cursor='hand2',
+                                command=self.procesar_caratula)
+        btn_procesar.pack(pady=15)
         
         # Barra de progreso para carátula
         self.progreso_caratula = ttk.Progressbar(self.tab_caratula, mode='indeterminate')
         self.progreso_caratula.pack(fill=tk.X, padx=20, pady=5)
         
-        self.estado_caratula_label = tk.Label(self.tab_caratula, text="Listo", fg='green')
-        self.estado_caratula_label.pack()
+        # Estado
+        self.estado_caratula_label = tk.Label(self.tab_caratula, text="✅ Listo", fg='green', font=('Arial', 10))
+        self.estado_caratula_label.pack(pady=5)
+    
+    def obtener_ruta_fuente(self, nombre_fuente):
+        """Convierte el nombre de la fuente a la ruta del archivo"""
+        if nombre_fuente in self.mapa_fuentes:
+            ruta_script = os.path.dirname(os.path.abspath(__file__))
+            return os.path.join(ruta_script, "fonts", self.mapa_fuentes[nombre_fuente])
+        return nombre_fuente  # Si no está mapeado, usar el nombre directamente
     
     def seleccionar_video(self):
         archivo = filedialog.askopenfilename(
@@ -286,7 +352,8 @@ class AñadirTextoVideo:
             
             try:
                 clip = VideoFileClip(archivo)
-                info = f"Duración: {clip.duration:.2f}s | {clip.size[0]}x{clip.size[1]}"
+                duracion_formateada = self.formatear_duracion(clip.duration)
+                info = f"Duración: {duracion_formateada} | {clip.size[0]}x{clip.size[1]}"
                 self.video_info.config(text=info)
                 clip.close()
             except Exception as e:
@@ -311,18 +378,19 @@ class AñadirTextoVideo:
             self.contra_label.config(text=os.path.basename(archivo), fg='black')
     
     def seleccionar_color(self):
-        color = colorchooser.askcolor(title="Seleccionar color")[1]
+        color = colorchooser.askcolor(title="Seleccionar color", 
+                                      initialcolor=self.color_seleccionado)[1]
         if color:
             self.color_seleccionado = color
-            self.color_label.config(bg=color, text="")
+            self.color_label.config(bg=color)
     
     def procesar_texto(self):
         if not self.video_path:
-            messagebox.showerror("Error", "Selecciona un video")
+            messagebox.showerror("Error", "❌ Selecciona un video")
             return
         
         if not self.texto_entry.get():
-            messagebox.showerror("Error", "Escribe un texto")
+            messagebox.showerror("Error", "❌ Escribe un texto")
             return
         
         threading.Thread(target=self.añadir_texto, daemon=True).start()
@@ -339,11 +407,11 @@ class AñadirTextoVideo:
             )
         
         if not video_a_usar:
-            messagebox.showerror("Error", "Selecciona un video")
+            messagebox.showerror("Error", "❌ Selecciona un video")
             return
         
         if not self.caratula_path and not self.contra_path:
-            messagebox.showerror("Error", "Selecciona al menos una imagen")
+            messagebox.showerror("Error", "❌ Selecciona al menos una imagen")
             return
         
         self.video_path_caratula = video_a_usar
@@ -351,7 +419,7 @@ class AñadirTextoVideo:
     
     def añadir_texto(self):
         self.progreso.start()
-        self.estado_label.config(text="Procesando...", fg='orange')
+        self.estado_label.config(text="⏳ Procesando...", fg='orange')
         
         try:
             # Cargar video
@@ -363,14 +431,15 @@ class AñadirTextoVideo:
             else:
                 duracion_texto = float(self.duracion_entry.get())
             
-            # Verificar que tenemos una fuente
-            if not self.ruta_fuente:
-                # Si no hay fuente incluida, intentar con Arial
-                fuente_a_usar = "Arial"
-            else:
-                fuente_a_usar = self.ruta_fuente
+            # Obtener la ruta de la fuente seleccionada
+            fuente_a_usar = self.obtener_ruta_fuente(self.fuente.get())
             
-            # Crear texto con la fuente incluida y borde incluido en el constructor
+            # Verificar que la fuente existe
+            if isinstance(fuente_a_usar, str) and not os.path.exists(fuente_a_usar):
+                # Si no existe el archivo, usar el nombre directamente
+                fuente_a_usar = self.fuente.get()
+            
+            # Crear texto con todos los parámetros
             texto = TextClip(
                 font=fuente_a_usar,
                 text=self.texto_entry.get(),
@@ -380,7 +449,7 @@ class AñadirTextoVideo:
                 stroke_width=2 if self.borde_var.get() else 0
             ).with_duration(duracion_texto)
             
-            # Posicionar texto
+            # Posicionar texto según selección
             if self.posicion.get() == 'center':
                 texto = texto.with_position(('center', 'center'))
             elif self.posicion.get() == 'top':
@@ -392,13 +461,13 @@ class AñadirTextoVideo:
             elif self.posicion.get() == 'right':
                 texto = texto.with_position((clip.w - 200, 'center'))
             
-            # Componer
+            # Componer video final
             if duracion_texto < clip.duration:
                 texto = texto.with_start(0)
             
             video_final = CompositeVideoClip([clip, texto])
             
-            # Guardar
+            # Guardar archivo
             archivo_salida = filedialog.asksaveasfilename(
                 defaultextension=".mp4",
                 filetypes=[("MP4", "*.mp4")],
@@ -407,11 +476,14 @@ class AñadirTextoVideo:
             
             if archivo_salida:
                 video_final.write_videofile(archivo_salida, logger=None)
-                self.estado_label.config(text=f"✅ Guardado en {os.path.basename(archivo_salida)}", fg='green')
+                self.estado_label.config(
+                    text=f"✅ Guardado: {os.path.basename(archivo_salida)}", 
+                    fg='green'
+                )
             else:
-                self.estado_label.config(text="Operación cancelada", fg='orange')
+                self.estado_label.config(text="⏸️ Operación cancelada", fg='orange')
             
-            # Limpiar
+            # Limpiar recursos
             clip.close()
             texto.close()
             video_final.close()
@@ -423,7 +495,7 @@ class AñadirTextoVideo:
     
     def añadir_caratula_contra(self):
         self.progreso_caratula.start()
-        self.estado_caratula_label.config(text="Procesando...", fg='orange')
+        self.estado_caratula_label.config(text="⏳ Procesando...", fg='orange')
         
         try:
             # Cargar video original
@@ -451,7 +523,7 @@ class AñadirTextoVideo:
             # Combinar todo
             video_final = concatenate_videoclips(clips)
             
-            # Guardar
+            # Guardar archivo
             archivo_salida = filedialog.asksaveasfilename(
                 defaultextension=".mp4",
                 filetypes=[("MP4", "*.mp4")],
@@ -460,11 +532,14 @@ class AñadirTextoVideo:
             
             if archivo_salida:
                 video_final.write_videofile(archivo_salida, logger=None)
-                self.estado_caratula_label.config(text=f"✅ Guardado en {os.path.basename(archivo_salida)}", fg='green')
+                self.estado_caratula_label.config(
+                    text=f"✅ Guardado: {os.path.basename(archivo_salida)}", 
+                    fg='green'
+                )
             else:
-                self.estado_caratula_label.config(text="Operación cancelada", fg='orange')
+                self.estado_caratula_label.config(text="⏸️ Operación cancelada", fg='orange')
             
-            # Limpiar
+            # Limpiar recursos
             for c in clips:
                 c.close()
             
