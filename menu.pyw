@@ -16,6 +16,7 @@ COLORES = {
     "ADMINISTRACIÓN": "#f1c40f",
     "CLASES": "#9b59b6",
     "AULA": "#2ecc71",
+    "AUDIO & VÍDEO": "#ffa500",
     "OTROS": "#e0e0e0"
 }
 FAV_FILE = "favoritos.txt"
@@ -356,6 +357,8 @@ class MenuFinalPerfecto:
             return "PDF"
         if any(x in n for x in ["examenes", "notas"]): 
             return "CLASES"
+        if any(x in n for x in ["video", "audio", "videos", "youtube"]): 
+            return "AUDIO & VÍDEO"
         if any(x in n for x in ["horario", "diligencia", "gestion", "certificados", "calculador", "diplomas"]): 
             return "ADMINISTRACIÓN"
         if any(x in n for x in ["bingo", "crono", "traductor", "pasapalabra", "picker", "clase", "qr", "juego"]): 
