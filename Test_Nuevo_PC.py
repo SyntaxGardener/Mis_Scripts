@@ -56,11 +56,7 @@ def check_and_update():
         ("qrcode", "qrcode[pil]", "Códigos QR", False),
         ("matplotlib", "matplotlib", "Gráficos", False),
         ("yt_dlp", "yt-dlp", "Descarga YouTube", True),
-<<<<<<< HEAD
         ("moviepy", "moviepy", "Videos", True),
-=======
-        ("moviepy", "moviepy", "Vídeos", True),
->>>>>>> 22e502cfa1c0071ab68c561e12e287821a820d68
         ("win32com", "pywin32", "Automatización Win", False),
         ("pythoncom", "pywin32", "Componentes COM", False),
         ("PyInstaller", "pyinstaller", "Creador de .EXE", False),
