@@ -153,8 +153,8 @@ class EditorAudio:
     def _config_ventana(self):
         w, h = 840, 780
         x = (self.root.winfo_screenwidth() - w) // 2
-        self.root.geometry(f"{w}x{h}+{x}+20")
-        self.root.minsize(760, 680)
+        self.root.geometry(f"{w}x{h}+{x}+5")
+        self.root.minsize(760, 670)
 
     def _bind_keys(self):
         self.root.bind("<space>", lambda e: self._toggle_play())
