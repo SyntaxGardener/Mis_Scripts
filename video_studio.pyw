@@ -1135,7 +1135,8 @@ class TabEditor:
             tc   = TextClip(font=fn, text=self.t_texto.get(),
                             font_size=self.t_size.get(), color=self.color_sel,
                             stroke_color='black' if self.t_borde.get() else None,
-                            stroke_width=2 if self.t_borde.get() else 0
+                            stroke_width=2 if self.t_borde.get() else 0,
+                            margin=(0, int(self.t_size.get() * 0.3))
                             ).with_duration(dur)
             pos = self.t_pos.get()
             if pos=='center':     tc = tc.with_position(('center','center'))
@@ -1241,7 +1242,8 @@ class TabEditor:
             for item in self.lista_textos:
                 tc = TextClip(font=self.mapa_fuentes.get('Arial','Arial'),
                               text=item['texto'], font_size=item['tamaño'],
-                              color='white', stroke_color='black', stroke_width=2
+                              color='white', stroke_color='black', stroke_width=2,
+                              margin=(0, int(item['tamaño'] * 0.3))
                               ).with_duration(item['duracion']).with_start(item['inicio'])
                 p = item['posicion']
                 if p=='center':   tc=tc.with_position(('center','center'))
@@ -1590,7 +1592,8 @@ class TabEditor:
                 marca = TextClip(
                     font='Arial', text=self.wm_texto.get(),
                     font_size=self.wm_size.get(), color='white',
-                    stroke_color='black', stroke_width=1
+                    stroke_color='black', stroke_width=1,
+                    margin=(0, int(self.wm_size.get() * 0.3))
                 ).with_duration(clip.duration).with_opacity(opac)
                 mw, mh = marca.size
                 pos = pos_fn(mw, mh, clip.w, clip.h)
@@ -1986,7 +1989,8 @@ class TabEditor:
                     font=fn, text=texto, font_size=sz, color=color,
                     stroke_color='black' if borde else None,
                     stroke_width=2 if borde else 0,
-                    method='caption', size=(clip.w - margin*2, None)
+                    method='caption', size=(clip.w - margin*2, None),
+                    margin=(0, int(sz * 0.3))
                 ).with_duration(dur).with_start(t_in)
                 pos = pos_fn(tc.h)
                 tc  = tc.with_position(pos)
@@ -2072,10 +2076,10 @@ class TabUnir:
         tk.Label(oi, text="Método de unión", font=FNB,
                  fg=TEXT, bg=CARD).pack(anchor='w', pady=(0,4))
         self.metodo = tk.StringVar(value='compose')
-        tk.Radiobutton(oi, text="Compose  (recomendado — mejor calidad  - un solo formato para todos)",
+        tk.Radiobutton(oi, text="Compose  (recomendado — único formato común a todos los vídeos)",
                        variable=self.metodo, value='compose',
                        bg=CARD, font=FN, activebackground=CARD).pack(anchor='w')
-        tk.Radiobutton(oi, text="Chain  (más rápido — cada vídeo mantiene su formato original)",
+        tk.Radiobutton(oi, text="Chain  (más rápido — cada vídeo conserva su formato)",
                        variable=self.metodo, value='chain',
                        bg=CARD, font=FN, activebackground=CARD).pack(anchor='w')
 
