@@ -70,7 +70,7 @@ class MenuFinalPerfecto:
         self.root = root
         self.root.title("SCRIPT HUB - GIT SYNC (Raquel)")
         ancho = 800
-        alto = 800
+        alto = 775
         pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
         self.root.geometry(f"{ancho}x{alto}+{pos_x}+0")
         self.root.configure(bg="#121212")
@@ -361,7 +361,7 @@ class MenuFinalPerfecto:
             return "AUDIO & VÍDEO"
         if any(x in n for x in ["horario", "diligencia", "gestion", "certificados", "calculador", "diplomas"]): 
             return "ADMINISTRACIÓN"
-        if any(x in n for x in ["bingo", "crono", "traductor", "pasapalabra", "picker", "clase", "qr", "juego"]): 
+        if any(x in n for x in ["bingo", "crono", "game", "pasapalabra", "picker", "clase", "qr", "juego"]): 
             return "AULA"
         return "OTROS"
 
