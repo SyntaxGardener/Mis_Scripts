@@ -2777,7 +2777,7 @@ class VideoStudio:
         root.configure(bg=BG)
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
         x = (sw - self.WIN_W) // 2
-        root.geometry(f"{self.WIN_W}x{self.WIN_H}+{x}+20")
+        root.geometry(f"{self.WIN_W}x{self.WIN_H}+{x}+5")
         root.minsize(900, 620)
 
         pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=1024)
