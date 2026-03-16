@@ -110,12 +110,14 @@ IDIOMAS = {
             "ah_gana_m":    "Correcto!\n\nLa palabra era:\n{w}",
             "ah_pierde_t":  "Perdiste",
             "ah_pierde_m":  "La palabra era:\n{w}",
-            "ah_cargar":    "Cargar .txt",
+            "ah_cargar":    "Cargar .txt / .docx",
             "ah_car_titulo":"Cargar lista de palabras",
             "ah_car_ok":    "{n} palabras cargadas desde\n«{f}»",
             "ah_car_pocas": "No se encontraron palabras válidas (mínimo 3 letras).",
             "ah_car_error": "Error al leer el fichero",
             "ah_tema":      "Lista: {f}",
+            "ah_docx_col":  2,
+            "ah_docx_nodocx": "Para leer .docx instala python-docx:\n  pip install python-docx",
         },
     },
     "EN": {
@@ -205,12 +207,14 @@ IDIOMAS = {
             "ah_gana_m":    "Correct!\n\nThe word was:\n{w}",
             "ah_pierde_t":  "Game over",
             "ah_pierde_m":  "The word was:\n{w}",
-            "ah_cargar":    "Load .txt",
+            "ah_cargar":    "Load .txt / .docx",
             "ah_car_titulo":"Load word list",
             "ah_car_ok":    "{n} words loaded from\n«{f}»",
             "ah_car_pocas": "No valid words found (minimum 3 letters).",
             "ah_car_error": "Error reading file",
             "ah_tema":      "List: {f}",
+            "ah_docx_col":  3,
+            "ah_docx_nodocx": "To read .docx files install python-docx:\n  pip install python-docx",
         },
     },
 }
@@ -983,31 +987,72 @@ class AhorcadoGame:
         from tkinter import filedialog
         ruta = filedialog.askopenfilename(
             title=self.txt["ah_car_titulo"],
-            filetypes=[("Texto", "*.txt"), ("Todos", "*.*")])
+            filetypes=[
+                ("Word / Texto", "*.docx *.txt"),
+                ("Word (.docx)", "*.docx"),
+                ("Texto (.txt)", "*.txt"),
+                ("Todos", "*.*"),
+            ])
         if not ruta:
             return
+        ext = os.path.splitext(ruta)[1].lower()
+        if ext == ".docx":
+            self._cargar_docx(ruta)
+        else:
+            self._cargar_txt_plano(ruta)
+
+    def _cargar_txt_plano(self, ruta):
         try:
             with open(ruta, encoding="utf-8", errors="ignore") as f:
                 raw = [l.strip() for l in f if l.strip()]
-            validas_letras = self.cfg["letras_validas"]
-            nuevas = []
-            for p in raw:
-                p = quitar_tildes(p.upper())
-                if p.isalpha() and len(p) >= 3 and all(c in validas_letras for c in p):
-                    nuevas.append(p)
+            nuevas = self._filtrar_palabras(raw)
             if not nuevas:
-                messagebox.showwarning(
-                    self.txt["ah_car_titulo"],
-                    self.txt["ah_car_pocas"])
-                return
-            self.palabras    = nuevas
-            self.tema_nombre = os.path.basename(ruta)
-            messagebox.showinfo(
-                self.txt["ah_car_titulo"],
-                self.txt["ah_car_ok"].format(n=len(nuevas), f=self.tema_nombre))
-            self._nueva_partida()
+                messagebox.showwarning(self.txt["ah_car_titulo"],
+                                       self.txt["ah_car_pocas"]); return
+            self._aplicar_lista(nuevas, os.path.basename(ruta))
         except Exception as e:
             messagebox.showerror(self.txt["ah_car_error"], str(e))
+
+    def _cargar_docx(self, ruta):
+        try:
+            from docx import Document
+        except ImportError:
+            messagebox.showwarning(self.txt["ah_car_titulo"],
+                                   self.txt["ah_docx_nodocx"]); return
+        try:
+            doc   = Document(ruta)
+            col   = self.txt["ah_docx_col"] - 1   # ES→1, EN→2 (índice 0-based)
+            raw   = []
+            for table in doc.tables:
+                for row in table.rows:
+                    if len(row.cells) > col:
+                        val = row.cells[col].text.strip()
+                        if val:
+                            raw.append(val)
+            nuevas = self._filtrar_palabras(raw)
+            if not nuevas:
+                messagebox.showwarning(self.txt["ah_car_titulo"],
+                                       self.txt["ah_car_pocas"]); return
+            self._aplicar_lista(nuevas, os.path.basename(ruta))
+        except Exception as e:
+            messagebox.showerror(self.txt["ah_car_error"], str(e))
+
+    def _filtrar_palabras(self, raw):
+        validas_letras = self.cfg["letras_validas"]
+        resultado = []
+        for p in raw:
+            p = quitar_tildes(p.upper())
+            if p.isalpha() and len(p) >= 3 and all(c in validas_letras for c in p):
+                resultado.append(p)
+        return resultado
+
+    def _aplicar_lista(self, nuevas, nombre_fichero):
+        self.palabras    = nuevas
+        self.tema_nombre = nombre_fichero
+        messagebox.showinfo(
+            self.txt["ah_car_titulo"],
+            self.txt["ah_car_ok"].format(n=len(nuevas), f=nombre_fichero))
+        self._nueva_partida()
 
     def _key_fisico(self, event):
         k = quitar_tildes(event.keysym.upper())
@@ -1069,24 +1114,33 @@ class AhorcadoGame:
         elif n == 5: c.create_line(170, 145, 140, 182, width=3, fill=WHITE)
         elif n == 6: c.create_line(170, 145, 200, 182, width=3, fill=WHITE)
         elif n == 7:
-            c.create_arc(157, 67, 183, 87, start=0, extent=-180,
+            # Cara triste: arco hacia abajo (boca hacia abajo = frown)
+            c.create_arc(157, 72, 183, 88, start=0, extent=180,
                          style="arc", width=2, outline=RED)
             c.create_oval(159, 58, 165, 64, fill=RED, outline=RED)
             c.create_oval(175, 58, 181, 64, fill=RED, outline=RED)
 
     def _dibujar_ganador(self):
+        """Redibuja en verde solo las partes que se llegaron a dibujar, con cara feliz."""
         c = self.canvas
         self._dibujar_horca()
-        c.create_oval(150, 50, 190, 90, width=3, outline=GREEN)
-        c.create_line(170, 90, 170, 145, width=3, fill=GREEN)
-        c.create_line(170, 103, 140, 130, width=3, fill=GREEN)
-        c.create_line(170, 103, 200, 130, width=3, fill=GREEN)
-        c.create_line(170, 145, 140, 182, width=3, fill=GREEN)
-        c.create_line(170, 145, 200, 182, width=3, fill=GREEN)
-        c.create_arc(157, 67, 183, 87, start=0, extent=180,
-                     style="arc", width=2, outline=GREEN)
-        c.create_oval(159, 58, 165, 64, fill=GREEN, outline=GREEN)
-        c.create_oval(175, 58, 181, 64, fill=GREEN, outline=GREEN)
+        partes = [
+            lambda: c.create_oval(150, 50, 190, 90, width=3, outline=GREEN),
+            lambda: c.create_line(170, 90, 170, 145, width=3, fill=GREEN),
+            lambda: c.create_line(170, 103, 140, 130, width=3, fill=GREEN),
+            lambda: c.create_line(170, 103, 200, 130, width=3, fill=GREEN),
+            lambda: c.create_line(170, 145, 140, 182, width=3, fill=GREEN),
+            lambda: c.create_line(170, 145, 200, 182, width=3, fill=GREEN),
+        ]
+        for i in range(min(self.errores, len(partes))):
+            partes[i]()
+        # Cara feliz: arco hacia arriba (boca hacia arriba = smile)
+        # Siempre se dibuja si hay cabeza (error >= 1), o solo si hay errores > 0
+        if self.errores >= 1:
+            c.create_arc(157, 62, 183, 82, start=0, extent=-180,
+                         style="arc", width=2, outline=GREEN)
+            c.create_oval(159, 58, 165, 64, fill=GREEN, outline=GREEN)
+            c.create_oval(175, 58, 181, 64, fill=GREEN, outline=GREEN)
 
 
 if __name__ == "__main__":
