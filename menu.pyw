@@ -11,14 +11,16 @@ import webbrowser
 # ─────────────────────────────────────────────
 #  CONFIGURACIÓN VISUAL
 # ─────────────────────────────────────────────
+ACENTO   = "#e8e8e8"   # color único para scripts normales
+ACENTO_FAV = "#ffd54f" # dorado solo para favoritos
+
 COLORES = {
-    "RECIENTES":      "#ffab40",   # ámbar cálido
     "FAVORITOS":      "#ffd54f",   # dorado
     "SISTEMA":        "#4dd0e1",   # cian
     "PDF":            "#ef5350",   # rojo
-    "ADMINISTRACIÓN": "#ab47bc",   # púrpura
+    "ADMINISTRACIÓN": "#9b59b6",   # púrpura
     "CLASES":         "#66bb6a",   # verde
-    "AULA":           "#ff7043",   # naranja
+    "AULA":           "#ff7f24",   # naranja
     "AUDIO & VÍDEO":  "#ec407a",   # rosa
     "OTROS":          "#90a4ae",   # gris azulado
 }
@@ -99,11 +101,11 @@ def ejecutar_herramienta(ruta_archivo, ventana_principal):
 class MenuFinalPerfecto:
     def __init__(self, root):
         self.root = root
-        self.root.title("TOOLBOX · (Raquel)")
-        ancho, alto = 820, 800
+        self.root.title("TOOLBOX · RCM")
+        ancho, alto = 820, 780
         pos_x = (self.root.winfo_screenwidth()  // 2) - (ancho // 2)
         pos_y = (self.root.winfo_screenheight() // 2) - (alto  // 2)
-        self.root.geometry(f"{ancho}x{alto}+{pos_x}+{pos_y}")
+        self.root.geometry(f"{ancho}x{alto}+{pos_x}+2")
         self.root.configure(bg=BG_ROOT)
         self.root.minsize(640, 500)
 
@@ -154,7 +156,7 @@ class MenuFinalPerfecto:
         right = tk.Frame(header, bg=BG_ROOT)
         right.pack(side="right")
 
-        self._hacer_boton_accion(right, "🔄", "#2a2a2a", FG_DIM,
+        self._hacer_boton_accion(right, "🔄 REFRESCAR", "#1a2a1a", "#4caf50", 
                                   self.actualizar_todo).pack(side="right", padx=3)
 
         self._hacer_boton_accion(right, "🛠 REPARAR", "#1e1212", "#c0392b",
@@ -443,8 +445,8 @@ class MenuFinalPerfecto:
                 hdr,
                 text=f"{icono}  {cat}  [{len(lista)}]{'   ▸' if not abierta else '   ▾'}",
                 font=("Segoe UI", 11, "bold"),
-                fg=color, bg=BG_ROOT, relief="flat", anchor="w",
-                activeforeground=color, activebackground=BG_ROOT,
+                fg=color, bg="#161616", relief="flat", anchor="w",
+                activeforeground=color, activebackground="#161616",
                 cursor="hand2",
                 command=lambda c=cat: self.toggle_carpeta(c)
             )
@@ -485,7 +487,7 @@ class MenuFinalPerfecto:
             return "FAVORITOS"
         if any(x in n for x in ["expulsar", "pc", "test", "usb", "windows",
                                   "imports", "limpieza", "borrar", "temp",
-                                  "cerrar", "organizador"]):
+                                  "cerrar", "portapapeles", "organizador"]):
             return "SISTEMA"
         if "pdf" in n:
             return "PDF"
