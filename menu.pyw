@@ -279,7 +279,7 @@ class MenuFinalPerfecto:
             try:
                 commit_msg = subprocess.check_output(
                     [cmd, "log", "-1", "--pretty=format:%s · %ar"],
-                    cwd=self.base_dir, text=True,
+                    cwd=self.base_dir, text=True, encoding="utf-8",
                     creationflags=subprocess.CREATE_NO_WINDOW).strip()
                 # Abreviar unidades de tiempo
                 for largo, corto in [
