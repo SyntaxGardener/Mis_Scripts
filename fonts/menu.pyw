@@ -7,6 +7,8 @@ import sys
 import shutil
 import threading
 import webbrowser
+import json
+import datetime
 
 # ─────────────────────────────────────────────
 #  CONFIGURACIÓN VISUAL
@@ -24,10 +26,11 @@ COLORES = {
 }
 
 ICONOS = {
+    "RECIENTES":      "🕐",
     "FAVORITOS":      "⭐",
     "SISTEMA":        "⚙️",
     "PDF":            "📄",
-    "ADMINISTRACIÓN": "📋",
+    "ADMINISTRACIÓN": "🗂️",
     "CLASES":         "📚",
     "AULA":           "🎮",
     "AUDIO & VÍDEO":  "🎵",
@@ -40,11 +43,42 @@ BG_CARD     = "#1c1c1c"
 BG_CARD_HOV = "#272727"
 BG_SEARCH   = "#1e1e1e"
 FG_MUTED    = "#666666"
-FG_DIM      = "#666666"
+FG_DIM      = "#999999"
 FG_MAIN     = "#e8e8e8"
 
-FAV_FILE   = "favoritos.txt"
-GITHUB_URL = "https://github.com/SyntaxGardener/"
+FAV_FILE     = "favoritos.txt"
+RECENT_FILE  = "recientes.json"
+GITHUB_URL   = "https://github.com/SyntaxGardener/"
+MAX_RECENTS  = 6
+
+
+# ─────────────────────────────────────────────
+#  TOOLTIP
+# ─────────────────────────────────────────────
+class Tooltip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tw = None
+        widget.bind("<Enter>", self.show)
+        widget.bind("<Leave>", self.hide)
+
+    def show(self, event=None):
+        x, y, _, cy = self.widget.bbox("insert") if hasattr(self.widget, "bbox") else (0, 0, 0, 0)
+        x += self.widget.winfo_rootx() + 20
+        y += self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self.tw = tk.Toplevel(self.widget)
+        self.tw.wm_overrideredirect(True)
+        self.tw.wm_geometry(f"+{x}+{y}")
+        lbl = tk.Label(self.tw, text=self.text, bg="#2a2a2a", fg="#cccccc",
+                       font=("Consolas", 8), padx=6, pady=3,
+                       relief="flat", bd=0)
+        lbl.pack()
+
+    def hide(self, event=None):
+        if self.tw:
+            self.tw.destroy()
+            self.tw = None
 
 
 # ─────────────────────────────────────────────
@@ -64,6 +98,24 @@ def guardar_favoritos(favoritos):
         for fav in favoritos:
             f.write(f"{fav}\n")
 
+def leer_recientes():
+    if os.path.exists(RECENT_FILE):
+        try:
+            with open(RECENT_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def guardar_reciente(nombre):
+    recientes = leer_recientes()
+    if nombre in recientes:
+        recientes.remove(nombre)
+    recientes.insert(0, nombre)
+    recientes = recientes[:MAX_RECENTS]
+    with open(RECENT_FILE, "w", encoding="utf-8") as f:
+        json.dump(recientes, f)
+
 def obtener_info_sistema():
     v_python = f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     ruta_base = os.path.dirname(os.path.abspath(__file__))
@@ -76,11 +128,12 @@ def obtener_info_sistema():
     except:
         return v_python
 
-def ejecutar_herramienta(ruta_archivo, ventana_principal):
+def ejecutar_herramienta(ruta_archivo, ventana_principal, nombre_archivo):
     try:
         if not os.path.exists(ruta_archivo):
             messagebox.showerror("Error", f"El archivo NO existe en:\n{ruta_archivo}")
             return
+        guardar_reciente(nombre_archivo)
         ruta_abs = os.path.abspath(ruta_archivo)
         exe_py = sys.executable.replace("pythonw.exe", "python.exe")
         if ruta_abs.lower().endswith(".py"):
@@ -99,7 +152,7 @@ def ejecutar_herramienta(ruta_archivo, ventana_principal):
 class MenuFinalPerfecto:
     def __init__(self, root):
         self.root = root
-        self.root.title("TOOLBOX · (Raquel)")
+        self.root.title("TOOLBOX · SyntaxGardener")
         ancho, alto = 820, 800
         pos_x = (self.root.winfo_screenwidth()  // 2) - (ancho // 2)
         pos_y = (self.root.winfo_screenheight() // 2) - (alto  // 2)
@@ -116,8 +169,10 @@ class MenuFinalPerfecto:
         if not os.path.exists(self.ruta_config):
             os.makedirs(self.ruta_config)
 
-        self.favoritos        = leer_favoritos()
+        self.favoritos       = leer_favoritos()
         self.estados_carpetas = {cat: False for cat in COLORES.keys()}
+        # RECIENTES siempre abierto por defecto
+        self.estados_carpetas["RECIENTES"] = True
 
         self._construir_ui()
         self.cargar_scripts()
@@ -155,18 +210,18 @@ class MenuFinalPerfecto:
         right.pack(side="right")
 
         self._hacer_boton_accion(right, "🔄", "#2a2a2a", FG_DIM,
-                                  self.actualizar_todo).pack(side="right", padx=3)
+                                  self.actualizar_todo, "F5  Actualizar").pack(side="right", padx=3)
 
         self._hacer_boton_accion(right, "🛠 REPARAR", "#1e1212", "#c0392b",
-                                  self.reparar_repositorio).pack(side="right", padx=3)
+                                  self.reparar_repositorio, "Resetear al estado de la nube").pack(side="right", padx=3)
 
         self.btn_push = self._hacer_boton_accion(right, "☁ SUBIR", "#1c1c1c", FG_DIM,
-                                                   self.realizar_push)
+                                                   self.realizar_push, "Commit + Push")
         self.btn_push.pack(side="right", padx=3)
         self.btn_push.config(state="disabled")
 
         self.btn_pull = self._hacer_boton_accion(right, "📥 DESCARGAR", "#1c1c1c", FG_DIM,
-                                                   self.realizar_pull)
+                                                   self.realizar_pull, "Git Pull")
         self.btn_pull.pack(side="right", padx=3)
 
         # ── BUSCADOR ──────────────────────────
@@ -187,6 +242,7 @@ class MenuFinalPerfecto:
         self.entry_busqueda.bind("<FocusIn>",   self._on_search_focus)
         self.entry_busqueda.bind("<FocusOut>",  self._on_search_unfocus)
         self.entry_busqueda.bind("<KeyRelease>", self.filtrar_scripts)
+        Tooltip(self.entry_busqueda, "Esc para limpiar · F5 para refrescar")
 
         # ── BARRA DE ESTADO ───────────────────
         status = tk.Frame(self.root, bg=BG_PANEL, height=28)
@@ -205,11 +261,11 @@ class MenuFinalPerfecto:
 
         tk.Label(status, text="│", fg="#2a2a2a", bg=BG_PANEL).pack(side="left")
 
-        self.lbl_commit = tk.Label(status, text="", fg="#888888",
+        self.lbl_commit = tk.Label(status, text="", fg="#3a3a3a",
                                     bg=BG_PANEL, font=("Consolas", 8))
         self.lbl_commit.pack(side="left", padx=6)
 
-        self.lbl_info = tk.Label(status, fg="#888888", bg=BG_PANEL, font=("Consolas", 8))
+        self.lbl_info = tk.Label(status, fg="#333", bg=BG_PANEL, font=("Consolas", 8))
         self.lbl_info.pack(side="right", padx=10)
 
         self.actualizar_barra_estado()
@@ -236,13 +292,15 @@ class MenuFinalPerfecto:
         self.scrollbar.pack(side="right", fill="y")
         self.root.bind_all("<MouseWheel>", self._on_mousewheel)
 
-    def _hacer_boton_accion(self, parent, texto, bg, fg, cmd):
+    def _hacer_boton_accion(self, parent, texto, bg, fg, cmd, tooltip=None):
         btn = tk.Button(parent, text=texto, font=("Segoe UI", 8, "bold"),
                         bg=bg, fg=fg, relief="flat", padx=8, pady=4,
                         activebackground="#333", activeforeground="white",
                         cursor="hand2", command=cmd)
         btn.bind("<Enter>", lambda e, b=btn: b.config(bg="#2e2e2e"))
         btn.bind("<Leave>", lambda e, b=btn, c=bg: b.config(bg=c))
+        if tooltip:
+            Tooltip(btn, tooltip)
         return btn
 
     # ── GIT ───────────────────────────────────
@@ -279,17 +337,6 @@ class MenuFinalPerfecto:
                     [cmd, "log", "-1", "--pretty=format:%s · %ar"],
                     cwd=self.base_dir, text=True,
                     creationflags=subprocess.CREATE_NO_WINDOW).strip()
-                # Abreviar unidades de tiempo
-                for largo, corto in [
-                    (" seconds ago", "s"), (" second ago", "s"),
-                    (" minutes ago", "m"), (" minute ago", "m"),
-                    (" hours ago", "h"),   (" hour ago", "h"),
-                    (" days ago", "d"),    (" day ago", "d"),
-                    (" weeks ago", "w"),   (" week ago", "w"),
-                    (" months ago", "mo"), (" month ago", "mo"),
-                    (" years ago", "a"),   (" year ago", "a"),
-                ]:
-                    commit_msg = commit_msg.replace(largo, corto)
                 commit_msg = commit_msg[:55] + "…" if len(commit_msg) > 55 else commit_msg
             except:
                 commit_msg = ""
@@ -397,8 +444,9 @@ class MenuFinalPerfecto:
         if termino in ("buscar script…", ""):
             termino = ""
 
-        ignorar    = {"lanzador.bat", "iniciar.vbs", "favoritos.txt"}
+        ignorar    = {"lanzador.bat", "iniciar.vbs", "favoritos.txt", "recientes.json"}
         script_act = os.path.basename(__file__)
+        recientes  = leer_recientes()
 
         try:
             archivos = [f for f in os.listdir(self.base_dir)
@@ -416,6 +464,10 @@ class MenuFinalPerfecto:
             if termino and termino not in f.lower():
                 continue
             cats[self.clasificar(f)].append(f)
+
+        # Recientes: filtrar los que aún existen
+        if not termino:
+            cats["RECIENTES"] = [r for r in recientes if r in archivos]
 
         self.scrollable_frame.grid_columnconfigure((0, 1), weight=1)
         fila = 0
@@ -442,7 +494,7 @@ class MenuFinalPerfecto:
             btn_cat = tk.Button(
                 hdr,
                 text=f"{icono}  {cat}  [{len(lista)}]{'   ▸' if not abierta else '   ▾'}",
-                font=("Segoe UI", 11, "bold"),
+                font=("Segoe UI", 9, "bold"),
                 fg=color, bg=BG_ROOT, relief="flat", anchor="w",
                 activeforeground=color, activebackground=BG_ROOT,
                 cursor="hand2",
@@ -466,18 +518,25 @@ class MenuFinalPerfecto:
         btn = tk.Button(
             self.scrollable_frame,
             text=nombre,
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 9, "bold"),
             bg=BG_CARD, fg=color,
             relief="flat", height=2,
             activebackground=BG_CARD_HOV,
             activeforeground=color,
             cursor="hand2",
-            command=lambda: ejecutar_herramienta(ruta, self.root)
+            command=lambda: self._lanzar(ruta, nombre_archivo)
         )
         btn.grid(row=f, column=c, sticky="nsew", padx=4, pady=3)
+
         btn.bind("<Enter>", lambda e, b=btn: b.config(bg=BG_CARD_HOV))
         btn.bind("<Leave>", lambda e, b=btn: b.config(bg=BG_CARD))
         btn.bind("<Button-3>", lambda e, n=nombre_archivo: self.toggle_favorito(n))
+
+        Tooltip(btn, f"{nombre_archivo}   (clic derecho → favorito)")
+
+    def _lanzar(self, ruta, nombre_archivo):
+        ejecutar_herramienta(ruta, self.root, nombre_archivo)
+        self.cargar_scripts()   # refresca sección "Recientes"
 
     def clasificar(self, nombre):
         n = nombre.lower()
