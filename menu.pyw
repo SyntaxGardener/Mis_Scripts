@@ -17,7 +17,7 @@ ACENTO_FAV = "#ffd54f" # dorado solo para favoritos
 COLORES = {
     "FAVORITOS":      "#ffd54f",   # dorado
     "SISTEMA":        "#4dd0e1",   # cian
-    "PDF & DOCX":     "#ef5350",   # rojo
+    "PDF/DOCX":       "#ef5350",   # rojo
     "ADMINISTRACIÓN": "#9b59b6",   # púrpura
     "CLASES":         "#66bb6a",   # verde
     "AULA":           "#ff7f24",   # naranja
@@ -480,7 +480,7 @@ class MenuFinalPerfecto:
                                   "cerrar", "portapapeles", "organizador"]):
             return "SISTEMA"
         if any(x in n for x in ["pdf", "informe", "word", "doc", "tabla", "docx"]):
-            return "PDF & DOCX"
+            return "PDF/DOCX"
         if any(x in n for x in ["examenes", "apuntes", "notas"]):
             return "CLASES"
         if any(x in n for x in ["video", "audio", "caratula", "youtube",

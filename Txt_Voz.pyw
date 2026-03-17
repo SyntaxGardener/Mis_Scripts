@@ -73,6 +73,14 @@ def lanzar_aplicacion():
             self.txt = tk.Text(frame, height=8, wrap=tk.WORD)
             self.txt.pack(fill=tk.X, pady=5)
             self.txt.bind("<KeyRelease>", lambda e: self.actualizar_sugerencia())
+
+            self.menu_ctx = tk.Menu(self.root, tearoff=0)
+            self.menu_ctx.add_command(label="✂️ Cortar",       command=lambda: self.txt.event_generate("<<Cut>>"))
+            self.menu_ctx.add_command(label="📋 Copiar",       command=lambda: self.txt.event_generate("<<Copy>>"))
+            self.menu_ctx.add_command(label="📌 Pegar",        command=lambda: self.txt.event_generate("<<Paste>>"))
+            self.menu_ctx.add_separator()
+            self.menu_ctx.add_command(label="✨ Limpiar todo", command=lambda: self.txt.delete("1.0", tk.END))
+            self.txt.bind("<Button-3>", lambda e: self.menu_ctx.tk_popup(e.x_root, e.y_root))
             
             btn_docs = ttk.Frame(frame)
             btn_docs.pack(fill=tk.X)
