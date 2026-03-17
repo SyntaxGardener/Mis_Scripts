@@ -3,6 +3,15 @@ import os
 import re
 import unicodedata
 
+# Fix SSL certificates for portable WinPython environments
+try:
+    import certifi
+    os.environ['SSL_CERT_FILE'] = certifi.where()
+    os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
+except ImportError:
+    import ssl
+    ssl._create_default_https_context = ssl._create_unverified_context
+
 def lanzar_aplicacion():
     try:
         import ctypes
