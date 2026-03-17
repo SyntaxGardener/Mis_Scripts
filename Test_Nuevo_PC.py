@@ -10,6 +10,7 @@ import logging
 # --- CONFIGURACIÓN DE SILENCIO ---
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
+warnings.filterwarnings("ignore", message=".*Couldn't find ffmpeg.*")  # Silencia aviso de pydub
 
 # Silenciar el log de pikepdf que sale en consola al importar
 logging.getLogger('pikepdf').setLevel(logging.ERROR)
