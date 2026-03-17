@@ -206,8 +206,8 @@ class SuiteDocumental:
             w.destroy()
         self.archivos_cargados = []
         self.ruta_pdf_unico    = ""
-        tk.Label(self.main_frame, text=titulo, font=("Arial", 16, "bold"),
-                 bg="#fafafa", fg="#2d2580").pack(side="top", anchor="w", pady=(0, 15))
+        tk.Label(self.main_frame, text=titulo, font=("Arial", 15, "bold"),
+                 bg="#fafafa", fg="#800000").pack(side="top", anchor="w", pady=(0, 15))
 
     def _checkbox_abrir(self, parent):
         """Devuelve un BooleanVar con el checkbox 'Abrir carpeta al finalizar'."""
@@ -312,7 +312,7 @@ class SuiteDocumental:
         f_btns.pack(fill="x")
         tk.Button(f_btns, text="➕ Añadir imágenes",
                   command=lambda: self._add_img(lista),
-                  bg="#2980b9", fg="white").pack(side="left", expand=True, fill="x", padx=2)
+                  bg="#154360", fg="white").pack(side="left", expand=True, fill="x", padx=2)
         tk.Button(f_btns, text="🗑️ Vaciar lista",
                   command=lambda: [self.archivos_cargados.clear(), self._refresh(lista)],
                   bg="#888780", fg="white").pack(side="left", expand=True, fill="x", padx=2)
@@ -361,7 +361,7 @@ class SuiteDocumental:
         self.var_img_abrir = self._checkbox_abrir(self.main_frame)
 
         tk.Button(self.main_frame, text="📄 GENERAR PDF",
-                  bg="#1a5276", fg="white", font=("Arial", 11, "bold"), height=2,
+                  bg="#800000", fg="white", font=("Arial", 11, "bold"), height=2,
                   command=lambda: self.run_img_to_pdf()).pack(fill="x", pady=5)
 
     def _add_img(self, lista):
@@ -415,11 +415,11 @@ class SuiteDocumental:
         self.limpiar_pantalla("🖼️ PDF a Imágenes")
         tk.Button(self.main_frame, text="➕ Seleccionar PDF",
                   command=lambda: self._add_files([("PDF", "*.pdf")], lista),
-                  bg="#2980b9", fg="white").pack(fill="x")
+                  bg="#154360", fg="white").pack(fill="x")
         lista = tk.Listbox(self.main_frame, height=12)
         lista.pack(fill="x", pady=10)
         tk.Button(self.main_frame, text="CONVERTIR A IMÁGENES",
-                  bg="#2980b9", fg="white", font=("Arial", 11, "bold"),
+                  bg="#800000", fg="white", font=("Arial", 11, "bold"), height=2,
                   command=self.run_p2img).pack(fill="x")
 
     def run_p2img(self):
@@ -441,7 +441,7 @@ class SuiteDocumental:
         self.limpiar_pantalla("📄 Word a PDF")
         tk.Button(self.main_frame, text="➕ Añadir archivos Word (.docx)",
                   command=lambda: self._add_files([("Word", "*.docx")], lista),
-                  bg="#2980b9", fg="white").pack(fill="x")
+                  bg="#154360", fg="white").pack(fill="x")
 
         lista = self._lista_con_controles(self.main_frame)
 
@@ -461,7 +461,7 @@ class SuiteDocumental:
         self.prog_w2p.pack(fill="x", pady=(4, 0))
 
         tk.Button(self.main_frame, text="CONVERTIR A PDF",
-                  bg="#1a5276", fg="white", font=("Arial", 11, "bold"), height=2,
+                  bg="#800000", fg="white", font=("Arial", 11, "bold"), height=2,
                   command=self.run_w2p).pack(fill="x", pady=10)
 
     def run_w2p(self):
@@ -533,14 +533,14 @@ class SuiteDocumental:
         self.limpiar_pantalla("📝 PDF a Word")
         tk.Button(self.main_frame, text="➕ Seleccionar PDF(s)",
                   command=lambda: self._add_files([("PDF", "*.pdf")], lista),
-                  bg="#2980b9", fg="white").pack(fill="x")
+                  bg="#154360", fg="white").pack(fill="x")
         lista = tk.Listbox(self.main_frame, height=6)
         lista.pack(fill="x", pady=10)
         self.var_p2w_abrir = self._checkbox_abrir(self.main_frame)
         self.prog_p2w = ttk.Progressbar(self.main_frame, mode="determinate")
         self.prog_p2w.pack(fill="x", pady=(4, 0))
         tk.Button(self.main_frame, text="CONVERTIR A WORD",
-                  bg="#2980b9", fg="white", font=("Arial", 11, "bold"), height=2,
+                  bg="#800000", fg="white", font=("Arial", 11, "bold"), height=2,
                   command=self.run_p2w).pack(fill="x", pady=10)
 
     def run_p2w(self):
@@ -574,10 +574,10 @@ class SuiteDocumental:
         f_sel.pack(fill="x")
         tk.Button(f_sel, text="📂 Seleccionar PDF",
                   command=self._sel_pdf_extractor,
-                  bg="#2980b9", fg="white").pack(side="left", fill="x", expand=True)
+                  bg="#154360", fg="white").pack(side="left", fill="x", expand=True)
         tk.Button(f_sel, text="👁️ Visor / Seleccionar páginas",
                   command=lambda: self._abrir_visor_paginas("select"),
-                  bg="#1a5276", fg="white").pack(side="left", padx=(4, 0))
+                  bg="#800000", fg="white").pack(side="left", padx=(4, 0))
 
         self.lbl_info = tk.Label(self.main_frame, text="Ningún archivo",
                                  bg="#fafafa", fg="gray")
@@ -651,7 +651,7 @@ class SuiteDocumental:
         self.prog_ext.pack(fill="x", pady=(6, 0))
 
         tk.Button(self.main_frame, text="✂️ EXTRAER PÁGINAS",
-                  bg="#1a5276", fg="white", font=("Arial", 11, "bold"), height=2,
+                  bg="#800000", fg="white", font=("Arial", 11, "bold"), height=2,
                   command=self.run_ext).pack(fill="x", pady=8)
 
     def _toggle_ext_opts(self):
@@ -742,33 +742,33 @@ class SuiteDocumental:
         seleccion = set()       # páginas marcadas en este momento (pendientes de grupo)
 
         # ── Barra superior ───────────────────────────────────────────────────
-        bar = tk.Frame(top, bg="#1a5276", pady=5)
+        bar = tk.Frame(top, bg="#800000", pady=5)
         bar.pack(fill="x")
 
         lbl_sel = None   # label contador
 
         if modo == "select":
             tk.Button(bar, text="✅ Todas",    command=lambda: _sel_all(),
-                      bg="#2980b9", fg="white", font=("Arial", 9),
+                      bg="#154360", fg="white", font=("Arial", 9),
                       cursor="hand2").pack(side="left", padx=3)
             tk.Button(bar, text="⬜ Ninguna",  command=lambda: _desel_all(),
                       bg="#888780", fg="white", font=("Arial", 9),
                       cursor="hand2").pack(side="left", padx=3)
             tk.Button(bar, text="↺ 90° izq.", command=lambda: _rotar(-90),
-                      bg="#1a5276", fg="white", font=("Arial", 9),
+                      bg="#800000", fg="white", font=("Arial", 9),
                       cursor="hand2").pack(side="left", padx=3)
             tk.Button(bar, text="↻ 90° der.", command=lambda: _rotar(90),
-                      bg="#1a5276", fg="white", font=("Arial", 9),
+                      bg="#800000", fg="white", font=("Arial", 9),
                       cursor="hand2").pack(side="left", padx=3)
-            lbl_sel = tk.Label(bar, text="0 sel.", bg="#1a5276",
+            lbl_sel = tk.Label(bar, text="0 sel.", bg="#800000",
                                fg="#e8e8f5", font=("Arial", 9))
             lbl_sel.pack(side="left", padx=6)
             tk.Button(bar, text="✔ ACEPTAR",  command=lambda: _aceptar(),
-                      bg="#1a5276", fg="white", font=("Arial", 10, "bold"),
+                      bg="#800000", fg="white", font=("Arial", 10, "bold"),
                       cursor="hand2").pack(side="right", padx=8)
         else:
             tk.Label(bar, text="Vista previa — clic en una página para ampliarla",
-                     bg="#1a5276", fg="#e8e8f5", font=("Arial", 9)
+                     bg="#800000", fg="#e8e8f5", font=("Arial", 9)
                      ).pack(side="left", padx=8)
             tk.Button(bar, text="✖ Cerrar", command=lambda: _cerrar(),
                       bg="#888780", fg="white", font=("Arial", 9),
@@ -781,7 +781,7 @@ class SuiteDocumental:
 
             tk.Button(gbar, text="➕ Añadir grupo con selección actual",
                       command=lambda: _add_grupo(),
-                      bg="#1a5276", fg="white", font=("Arial", 9, "bold"),
+                      bg="#800000", fg="white", font=("Arial", 9, "bold"),
                       cursor="hand2").pack(side="left", padx=(0, 6))
             tk.Button(gbar, text="🗑 Quitar último grupo",
                       command=lambda: _del_ultimo_grupo(),
@@ -789,7 +789,7 @@ class SuiteDocumental:
                       cursor="hand2").pack(side="left", padx=3)
             tk.Button(gbar, text="🗑🗑 Borrar todos los grupos",
                       command=lambda: _clear_grupos(),
-                      bg="#1a5276", fg="white", font=("Arial", 9),
+                      bg="#800000", fg="white", font=("Arial", 9),
                       cursor="hand2").pack(side="left", padx=3)
 
             lbl_grupos = tk.Label(gbar, text="Sin grupos", bg="#e8e8f5",
@@ -1141,14 +1141,14 @@ class SuiteDocumental:
         self.limpiar_pantalla("🔗 Unificador de PDFs")
         tk.Button(self.main_frame, text="➕ Añadir PDFs",
                   command=lambda: self._add_files([("PDF", "*.pdf")], lista),
-                  bg="#1a5276", fg="white").pack(fill="x")
+                  bg="#154360", fg="white").pack(fill="x")
 
         lista = self._lista_con_controles(self.main_frame)
 
         self.var_uni_abrir = self._checkbox_abrir(self.main_frame)
 
         tk.Button(self.main_frame, text="🔗 FUSIONAR PDFs",
-                  bg="#1a5276", fg="white", font=("Arial", 11, "bold"), height=2,
+                  bg="#800000", fg="white", font=("Arial", 11, "bold"), height=2,
                   command=self.run_uni).pack(fill="x", pady=10)
 
     def run_uni(self):
@@ -1192,7 +1192,7 @@ class SuiteDocumental:
                  wraplength=650, justify="left").pack(anchor="w", pady=(0, 4))
 
         tk.Button(self.main_frame, text="📂 Seleccionar PDF",
-                  command=self.sel_pdf_simple, bg="#2980b9", fg="white").pack(fill="x")
+                  command=self.sel_pdf_simple, bg="#154360", fg="white").pack(fill="x")
         self.lbl_info = tk.Label(self.main_frame, text="Ningún archivo",
                                  bg="#fafafa", fg="gray")
         self.lbl_info.pack(pady=4)
@@ -1226,7 +1226,7 @@ class SuiteDocumental:
         self.var_comp_abrir = self._checkbox_abrir(self.main_frame)
 
         tk.Button(self.main_frame, text="🗜️ COMPRIMIR PDF",
-                  bg="#2980b9", fg="white", font=("Arial", 11, "bold"), height=2,
+                  bg="#800000", fg="white", font=("Arial", 11, "bold"), height=2,
                   command=self.run_compresor).pack(fill="x", pady=8)
 
     def run_compresor(self):
@@ -1290,14 +1290,14 @@ class SuiteDocumental:
         self.limpiar_pantalla("🔍 Extraer Texto")
         tk.Button(self.main_frame, text="➕ Seleccionar PDF",
                   command=lambda: self._add_files([("PDF", "*.pdf")], lista),
-                  bg="#2980b9", fg="white").pack(fill="x")
+                  bg="#154360", fg="white").pack(fill="x")
         lista = tk.Listbox(self.main_frame, height=3)
         lista.pack(fill="x", pady=5)
 
         f_acc = tk.Frame(self.main_frame, bg="#fafafa")
         f_acc.pack(fill="x", pady=4)
         tk.Button(f_acc, text="🔍 EXTRAER TEXTO",
-                  command=self.run_ocr, bg="#2980b9", fg="white",
+                  command=self.run_ocr, bg="#800000", fg="white",
                   font=("Arial", 10, "bold")).pack(side="left")
         tk.Button(f_acc, text="📋 Seleccionar todo",
                   command=self._sel_todo, bg="#888780",
@@ -1346,7 +1346,7 @@ class SuiteDocumental:
     def mostrar_proteccion(self):
         self.limpiar_pantalla("🔐 Proteger PDF con Contraseña")
         tk.Button(self.main_frame, text="📂 Seleccionar PDF",
-                  command=self.sel_pdf_simple, bg="#2980b9", fg="white").pack(fill="x")
+                  command=self.sel_pdf_simple, bg="#154360", fg="white").pack(fill="x")
         self.lbl_info = tk.Label(self.main_frame, text="Ningún archivo",
                                  bg="#fafafa", fg="gray")
         self.lbl_info.pack(pady=5)
@@ -1356,7 +1356,7 @@ class SuiteDocumental:
         self.ent_pass.pack(fill="x", pady=5)
         self.var_prot_abrir = self._checkbox_abrir(self.main_frame)
         tk.Button(self.main_frame, text="🔐 ENCRIPTAR Y GUARDAR",
-                  bg="#1a5276", fg="white", font=("Arial", 11, "bold"), height=2,
+                  bg="#800000", fg="white", font=("Arial", 11, "bold"), height=2,
                   command=self.run_proteccion).pack(fill="x", pady=20)
 
     def run_proteccion(self):
@@ -1395,7 +1395,7 @@ class SuiteDocumental:
                  text="Se generará una copia sin contraseña del archivo original.",
                  bg="#fafafa", fg="#666").pack(anchor="w")
         tk.Button(self.main_frame, text="📂 Seleccionar PDF protegido",
-                  command=self.sel_pdf_simple, bg="#2980b9", fg="white").pack(fill="x", pady=10)
+                  command=self.sel_pdf_simple, bg="#154360", fg="white").pack(fill="x", pady=10)
         self.lbl_info = tk.Label(self.main_frame, text="Ningún archivo",
                                  bg="#fafafa", fg="gray")
         self.lbl_info.pack(pady=5)
@@ -1405,7 +1405,7 @@ class SuiteDocumental:
         self.ent_pass.pack(fill="x", pady=5)
         self.var_desprot_abrir = self._checkbox_abrir(self.main_frame)
         tk.Button(self.main_frame, text="🔓 QUITAR PROTECCIÓN Y GUARDAR",
-                  bg="#2980b9", fg="white", font=("Arial", 11, "bold"), height=2,
+                  bg="#800000", fg="white", font=("Arial", 11, "bold"), height=2,
                   command=self.run_desproteccion).pack(fill="x", pady=20)
 
     def run_desproteccion(self):
@@ -1446,7 +1446,7 @@ class SuiteDocumental:
     def mostrar_marcas(self):
         self.limpiar_pantalla("🔢 Numeración y Marcas de Agua")
         tk.Button(self.main_frame, text="📂 Seleccionar PDF",
-                  command=self.sel_pdf_simple, bg="#2980b9", fg="white").pack(fill="x")
+                  command=self.sel_pdf_simple, bg="#154360", fg="white").pack(fill="x")
         self.lbl_info = tk.Label(self.main_frame, text="Ningún archivo",
                                  bg="#fafafa", fg="gray")
         self.lbl_info.pack(pady=5)
@@ -1458,7 +1458,7 @@ class SuiteDocumental:
         tk.Checkbutton(self.main_frame, text="Añadir nº de página",
                        variable=self.var_num, bg="#fafafa").pack(anchor="w")
         tk.Button(self.main_frame, text="APLICAR Y GUARDAR",
-                  bg="#1a5276", fg="white", font=("Arial", 11, "bold"),
+                  bg="#800000", fg="white", font=("Arial", 11, "bold"),
                   command=self.run_marcas).pack(fill="x", pady=20)
 
     def run_marcas(self):
