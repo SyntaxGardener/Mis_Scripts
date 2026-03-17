@@ -13,7 +13,7 @@ GREEN  = "#27ae60"
 YELLOW = "#f1c40f"
 PURPLE = "#9b59b6"
 ORANGE = "#e67e22"
-GRAY   = "#7f8c8d"
+GRAY   = "#2d3748"
 WHITE  = "#ffffff"
 DARK   = "#1a252f"
 
@@ -101,10 +101,14 @@ IDIOMAS = {
             "bee_nodispon": "Letra no disponible: '{c}'",
             "bee_yaencon":  "Ya la encontraste",
             "bee_noenc":    "Palabra no encontrada",
-            "bee_puntos":   "Puntos: {p}/{m}",
+            "bee_puntos":   "Palabras: {p}/{m}",
             "bee_halladas": "Palabras encontradas:",
+            "bee_soluciones": "Ver soluciones",
+            "bee_sol_titulo": "Soluciones del puzzle",
+            "bee_sol_encontradas": "✅ Encontradas ({n}):",
+            "bee_sol_pendientes":  "❌ Pendientes ({n}):",
+            "bee_progreso":  "Progreso: ",
             "niveles":      ["Principiante","Novato","Bueno","Genial","Increible","Asombroso","GENIO"],
-            "ah_incorrec":  "Letras incorrectas: -",
             "ah_incorrec2": "Letras incorrectas: {l}",
             "ah_gana_t":    "Ganaste!",
             "ah_gana_m":    "Correcto!\n\nLa palabra era:\n{w}",
@@ -198,10 +202,14 @@ IDIOMAS = {
             "bee_nodispon": "Letter not available: '{c}'",
             "bee_yaencon":  "Already found!",
             "bee_noenc":    "Word not found",
-            "bee_puntos":   "Points: {p}/{m}",
+            "bee_puntos":   "Words: {p}/{m}",
             "bee_halladas": "Found words:",
+            "bee_soluciones": "Show solutions",
+            "bee_sol_titulo": "Puzzle solutions",
+            "bee_sol_encontradas": "✅ Found ({n}):",
+            "bee_sol_pendientes":  "❌ Missed ({n}):",
+            "bee_progreso":  "Progress: ",
             "niveles":      ["Beginner","Novice","Good","Great","Amazing","Awesome","GENIUS"],
-            "ah_incorrec":  "Wrong letters: -",
             "ah_incorrec2": "Wrong letters: {l}",
             "ah_gana_t":    "You won!",
             "ah_gana_m":    "Correct!\n\nThe word was:\n{w}",
@@ -261,6 +269,17 @@ def generar_puzzles_bee(pool):
     candidatos = [p for p in pool if 4 <= len(p) <= 12]
     if len(candidatos) < 20:
         return None
+
+    # Ajustar el rango de palabras válidas según el tamaño del diccionario:
+    # con diccionarios grandes casi cualquier combo produce cientos de palabras
+    n_pool = len(candidatos)
+    if n_pool > 100_000:
+        min_w, max_w = 40, 400
+    elif n_pool > 20_000:
+        min_w, max_w = 20, 150
+    else:
+        min_w, max_w = 15, 80
+
     puzzles = []
     intentos = 0
     while len(puzzles) < 8 and intentos < 300:
@@ -283,7 +302,7 @@ def generar_puzzles_bee(pool):
                 continue
             validas = frozenset(p for p in candidatos if set(p) <= frz and central in p)
             n = len(validas)
-            if 15 <= n <= 80 and n > mejor_count:
+            if min_w <= n <= max_w and n > mejor_count:
                 mejor_count = n
                 mejor_puzzle = {"letras": letras7, "central": central, "palabras": validas}
         if mejor_puzzle:
@@ -545,6 +564,14 @@ class JuegosApp(tk.Tk):
             gen = generar_puzzles_bee(self.dic_palabras)
             if gen:
                 return gen
+            # Fallback: intentar con el diccionario intermedio si el actual es muy grande
+            cfg = IDIOMAS[self.idioma]
+            fichero_inter = cfg["niveles_dic"][1][2]   # índice 1 = intermedio
+            _, palabras_inter = cargar_diccionario(self.idioma, fichero_inter)
+            if palabras_inter:
+                gen = generar_puzzles_bee(palabras_inter)
+                if gen:
+                    return gen
         return IDIOMAS[self.idioma]["bee_defecto"]
 
     def abrir_wordle(self):
@@ -555,7 +582,9 @@ class JuegosApp(tk.Tk):
     def abrir_spelling_bee(self):
         self.limpiar()
         SpellingBeeGame(self.main, self.mostrar_menu,
-                        self._puzzles_bee(), IDIOMAS[self.idioma])
+                        self._puzzles_bee(), IDIOMAS[self.idioma],
+                        pool=self.dic_palabras or None,
+                        nivel_nombre=getattr(self, "nivel_nombre", ""))
 
     def abrir_ahorcado(self):
         self.limpiar()
@@ -699,9 +728,38 @@ class WordleGame:
         for j in range(5):
             self.celdas[self.intentos][j].config(
                 text=intento[j], bg=colores[j], fg=WHITE, relief="solid")
-            btn = self.teclas.get(intento[j])
+
+        # Actualizar teclado con prioridad correcta: verde > amarillo > gris
+        # Si una letra aparece dos veces en el intento (ej. HEATE),
+        # el color resultante en la tecla debe ser el "mejor" de sus apariciones,
+        # EXCEPTO si una de ellas es gris (letra sobrante): en ese caso gris gana
+        # sobre amarillo porque informa que no hay más instancias de esa letra.
+        prioridad = {GREEN: 3, YELLOW: 2, GRAY: 1}
+        mejor_color = {}   # letra → color a aplicar en esta pasada
+
+        for j in range(5):
+            letra = intento[j]
+            color_nuevo = colores[j]
+            if letra not in mejor_color:
+                mejor_color[letra] = color_nuevo
+            else:
+                # Si hay conflicto entre amarillo y gris en el mismo intento,
+                # gris gana (indica que la letra ya está cubierta)
+                color_actual = mejor_color[letra]
+                if color_actual == YELLOW and color_nuevo == GRAY:
+                    mejor_color[letra] = GRAY
+                elif color_actual == GRAY and color_nuevo == YELLOW:
+                    pass  # mantener gris
+                else:
+                    # Para otros casos aplicar la mayor prioridad
+                    if prioridad.get(color_nuevo, 0) > prioridad.get(color_actual, 0):
+                        mejor_color[letra] = color_nuevo
+
+        for letra, color_final in mejor_color.items():
+            btn = self.teclas.get(letra)
             if btn and btn.cget("bg") != GREEN:
-                btn.config(bg=colores[j])
+                fg_key = "#555e6b" if color_final == GRAY else WHITE
+                btn.config(bg=color_final, fg=fg_key)
         if intento == secreta:
             self.lbl_msg.config(text=self.txt["w_correcto"], fg=GREEN)
             self.intentos = self.max_int
@@ -718,12 +776,14 @@ class WordleGame:
 #  SPELLING BEE
 # ══════════════════════════════════════════════════════════════════════════════
 class SpellingBeeGame:
-    def __init__(self, parent, volver_cb, puzzles, cfg):
-        self.parent    = parent
-        self.volver_cb = volver_cb
-        self.puzzles   = puzzles
-        self.cfg       = cfg
-        self.txt       = cfg["txt"]
+    def __init__(self, parent, volver_cb, puzzles, cfg, pool=None, nivel_nombre=""):
+        self.parent       = parent
+        self.volver_cb    = volver_cb
+        self.puzzles      = puzzles
+        self.cfg          = cfg
+        self.txt          = cfg["txt"]
+        self.nivel_nombre = nivel_nombre
+        self.pool         = {w.upper() for w in pool} if pool else None
         self._nuevo_puzzle()
 
     def _limpiar(self):
@@ -736,10 +796,24 @@ class SpellingBeeGame:
         perifericas            = [l for l in p["letras"] if l != self.central]
         random.shuffle(perifericas)
         self.perifericas       = perifericas
-        self.diccionario       = {w.upper() for w in p["palabras"]}
+        self.letras_set        = frozenset(p["letras"])
+
+        # Si hay diccionario global, calcular todas las palabras válidas del puzzle
+        # a partir de él; si no, usar la lista cerrada del puzzle
+        if self.pool:
+            self.diccionario = frozenset(
+                w for w in self.pool
+                if len(w) >= 4
+                and set(w) <= self.letras_set
+                and self.central in w
+            )
+        else:
+            self.diccionario = {w.upper() for w in p["palabras"]}
+
         self.palabra_actual    = ""
         self.palabras_halladas = set()
         self.puntos            = 0
+        self.total_palabras    = len(self.diccionario)
         self.max_puntos        = sum(1 if len(w) == 4 else len(w) for w in self.diccionario)
         self._construir_ui()
 
@@ -752,14 +826,18 @@ class SpellingBeeGame:
                   command=self._volver).pack(side="left")
         tk.Label(cab, text=self.txt["bee"],
                  font=("Helvetica", 19, "bold"), bg=BG, fg=YELLOW).pack(side="left", expand=True)
+        if self.nivel_nombre:
+            tk.Label(cab, text=self.nivel_nombre,
+                     font=("Helvetica", 10, "bold"), bg=BG, fg="#bdc3c7").pack(side="right", padx=6)
 
         info = tk.Frame(self.parent, bg=BG)
         info.pack(fill="x", pady=4)
         self.lbl_puntos = tk.Label(info,
-                                   text=self.txt["bee_puntos"].format(p=0, m=self.max_puntos),
+                                   text=self.txt["bee_puntos"].format(p=0, m=self.total_palabras),
                                    font=("Helvetica", 13, "bold"), bg=BG, fg=WHITE)
         self.lbl_puntos.pack(side="left", padx=20)
-        self.lbl_nivel = tk.Label(info, text=self.txt["niveles"][0],
+        self.lbl_nivel = tk.Label(info,
+                                  text=self.txt["bee_progreso"] + self.txt["niveles"][0],
                                   font=("Helvetica", 13, "bold"), bg=BG, fg=YELLOW)
         self.lbl_nivel.pack(side="left")
 
@@ -782,10 +860,11 @@ class SpellingBeeGame:
         ctrl = tk.Frame(self.parent, bg=BG)
         ctrl.pack(pady=4)
         for texto, color, cmd in [
-            (self.txt["mezclar"], PURPLE,    self._mezclar),
-            (self.txt["borrar"],  ORANGE,    self._borrar),
-            (self.txt["enviar"],  GREEN,     self._enviar),
-            (self.txt["nueva_p"],"#4a5568", self._nuevo_puzzle),
+            (self.txt["mezclar"],     PURPLE,    self._mezclar),
+            (self.txt["borrar"],      ORANGE,    self._borrar),
+            (self.txt["enviar"],      GREEN,     self._enviar),
+            (self.txt["nueva_p"],    "#4a5568",  self._nuevo_puzzle),
+            (self.txt["bee_soluciones"], GRAY,   self._ver_soluciones),
         ]:
             tk.Button(ctrl, text=texto, bg=color, fg=WHITE,
                       font=("Helvetica", 11, "bold"), relief="flat",
@@ -884,17 +963,93 @@ class SpellingBeeGame:
         else:
             self._feedback(txt["bee_noenc"], RED)
 
+    def _ver_soluciones(self):
+        txt = self.txt
+        encontradas = sorted(self.palabras_halladas)
+        pendientes  = sorted(self.diccionario - self.palabras_halladas)
+
+        # Ventana emergente
+        win = tk.Toplevel(self.parent)
+        win.title(txt["bee_sol_titulo"])
+        win.configure(bg=BG)
+        win.resizable(False, False)
+        win.grab_set()   # modal
+
+        # Centrar sobre la ventana principal
+        win.update_idletasks()
+        px = self.parent.winfo_toplevel().winfo_x()
+        py = self.parent.winfo_toplevel().winfo_y()
+        win.geometry(f"460x500+{px+110}+{py+130}")
+
+        tk.Label(win, text=txt["bee_sol_titulo"],
+                 font=("Helvetica", 15, "bold"), bg=BG, fg=WHITE).pack(pady=(14, 6))
+
+        # Resumen
+        total   = len(self.diccionario)
+        halladas= len(encontradas)
+        pct     = int(halladas / max(total, 1) * 100)
+        tk.Label(win, text=f"{halladas} / {total}  ({pct}%)",
+                 font=("Helvetica", 12), bg=BG, fg=YELLOW).pack(pady=(0, 10))
+
+        # Área de texto con scroll
+        frame_txt = tk.Frame(win, bg=BG)
+        frame_txt.pack(fill="both", expand=True, padx=16, pady=(0, 10))
+        sb = tk.Scrollbar(frame_txt)
+        sb.pack(side="right", fill="y")
+        area = tk.Text(frame_txt, font=("Helvetica", 11),
+                       bg=DARK, fg=WHITE, relief="flat",
+                       yscrollcommand=sb.set, state="normal",
+                       wrap="word")
+        area.pack(side="left", fill="both", expand=True)
+        sb.config(command=area.yview)
+
+        # Tags de color
+        area.tag_config("enc_hdr",  foreground=GREEN,  font=("Helvetica", 11, "bold"))
+        area.tag_config("enc_word", foreground=GREEN)
+        area.tag_config("pen_hdr",  foreground=RED,    font=("Helvetica", 11, "bold"))
+        area.tag_config("pen_word", foreground="#aaaaaa")
+
+        # Encontradas
+        area.insert(tk.END,
+                    txt["bee_sol_encontradas"].format(n=len(encontradas)) + "\n",
+                    "enc_hdr")
+        if encontradas:
+            area.insert(tk.END,
+                        "  " + "   ".join(encontradas) + "\n\n",
+                        "enc_word")
+        else:
+            area.insert(tk.END, "  —\n\n", "enc_word")
+
+        # Pendientes
+        area.insert(tk.END,
+                    txt["bee_sol_pendientes"].format(n=len(pendientes)) + "\n",
+                    "pen_hdr")
+        if pendientes:
+            area.insert(tk.END,
+                        "  " + "   ".join(pendientes) + "\n",
+                        "pen_word")
+        else:
+            area.insert(tk.END, "  —\n", "pen_word")
+
+        area.config(state="disabled")
+
+        tk.Button(win, text="OK", bg=BLUE, fg=WHITE,
+                  font=("Helvetica", 11, "bold"), relief="flat",
+                  cursor="hand2", width=10,
+                  command=win.destroy).pack(pady=10)
+
     def _feedback(self, msg, color):
         self.lbl_fb.config(text=msg, fg=color)
         self.parent.after(2000, lambda: self.lbl_fb.config(text=""))
 
     def _actualizar_puntuacion(self):
+        n_halladas = len(self.palabras_halladas)
         self.lbl_puntos.config(
-            text=self.txt["bee_puntos"].format(p=self.puntos, m=self.max_puntos))
-        pct = self.puntos / max(self.max_puntos, 1) * 100
+            text=self.txt["bee_puntos"].format(p=n_halladas, m=self.total_palabras))
+        pct = n_halladas / max(self.total_palabras, 1) * 100
         umbrales = [10, 25, 40, 55, 70, 90, 101]
         nivel = self.txt["niveles"][next(i for i, u in enumerate(umbrales) if pct < u)]
-        self.lbl_nivel.config(text=nivel)
+        self.lbl_nivel.config(text=self.txt["bee_progreso"] + nivel)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
