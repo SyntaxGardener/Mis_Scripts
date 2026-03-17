@@ -1,4 +1,4 @@
-import os, sys, ctypes, ctypes.wintypes, winreg, json, threading, subprocess
+import os, sys, ctypes, ctypes.wintypes, winreg, json, threading, subprocess, shutil
 import urllib.request, urllib.parse
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -17,7 +17,21 @@ def es_admin():
 
 def pedir_elevacion():
     if not es_admin():
-        ctypes.windll.shell32.ShellExecuteW(None,"runas",sys.executable,__file__,None,1)
+        script = os.path.abspath(__file__)
+        # Usar pythonw.exe para no abrir consola negra
+        ejecutable = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+        if not os.path.exists(ejecutable):
+            ejecutable = sys.executable
+        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", ejecutable, f'"{script}"', None, 1)
+        if ret <= 32:
+            # UAC rechazado o bloqueado — avisar al usuario
+            import tkinter as _tk
+            from tkinter import messagebox as _mb
+            _r = _tk.Tk(); _r.withdraw()
+            _mb.showerror("Sin permisos de administrador",
+                "No se pudieron obtener permisos de administrador.\n\n"
+                "Ejecuta el script con clic derecho → 'Ejecutar como administrador'.")
+            _r.destroy()
         sys.exit()
 
 # ── Registro ──────────────────────────────────────────────────
@@ -198,6 +212,14 @@ CATEGORIAS_MEDICION = {
     ],
 }
 
+def _rutas_cache_chromium(nombre, patron):
+    rutas = []
+    base = os.path.expandvars(patron)
+    for perfil in _perfiles_chromium(base):
+        for sub in CHROMIUM_SUBCARPETAS:
+            rutas.append(os.path.join(perfil, sub))
+    return rutas
+
 def tamanio_carpeta(ruta):
     ruta = os.path.expandvars(ruta)
     if not os.path.exists(ruta):
@@ -215,6 +237,11 @@ def medir_categorias():
     resultado = {}
     for cat, rutas in CATEGORIAS_MEDICION.items():
         resultado[cat] = sum(tamanio_carpeta(r) for r in rutas)
+    # Navegadores
+    for nombre, patron in NAVEGADORES_CHROMIUM.items():
+        resultado[f"Caché {nombre}"] = sum(
+            tamanio_carpeta(r) for r in _rutas_cache_chromium(nombre, patron))
+    resultado["Caché Firefox"] = sum(tamanio_carpeta(r) for r in _perfiles_firefox())
     # Papelera: usar tamaño reportado por Windows
     try:
         info = SHQUERYRBINFO()
@@ -224,6 +251,134 @@ def medir_categorias():
     except:
         resultado["Papelera de reciclaje"] = 0
     return resultado
+
+CARPETAS_TEMP = [
+    r"%TEMP%",
+    r"%WINDIR%\Temp",
+    r"%LOCALAPPDATA%\Temp",
+]
+
+# ── Caché de navegadores ──────────────────────────────────────
+# Subcarpetas de caché seguras para borrar en navegadores Chromium
+CHROMIUM_SUBCARPETAS = [
+    "Cache", "Cache Storage", "Code Cache", "GPUCache",
+    "Media Cache", "Service Worker\\CacheStorage",
+    "Service Worker\\ScriptCache",
+]
+
+NAVEGADORES_CHROMIUM = {
+    "Chrome":  r"%LOCALAPPDATA%\Google\Chrome\User Data",
+    "Edge":    r"%LOCALAPPDATA%\Microsoft\Edge\User Data",
+    "Brave":   r"%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data",
+}
+
+def _perfiles_chromium(base):
+    """Devuelve todas las carpetas de perfil dentro de User Data."""
+    perfiles = []
+    if not os.path.isdir(base):
+        return perfiles
+    for nombre in os.listdir(base):
+        ruta = os.path.join(base, nombre)
+        if nombre == "Default" or (nombre.startswith("Profile ") and os.path.isdir(ruta)):
+            perfiles.append(ruta)
+    return perfiles
+
+def _perfiles_firefox():
+    """Devuelve las carpetas de caché de todos los perfiles de Firefox.
+    Firefox guarda la caché en %LOCALAPPDATA%, no en %APPDATA%."""
+    rutas = []
+    # Ruta principal de caché (Firefox moderno)
+    base_cache = os.path.expandvars(r"%LOCALAPPDATA%\Mozilla\Firefox\Profiles")
+    # Ruta de perfiles (para startupCache y perfiles antiguos)
+    base_perfil = os.path.expandvars(r"%APPDATA%\Mozilla\Firefox\Profiles")
+
+    # Caché en LOCALAPPDATA
+    if os.path.isdir(base_cache):
+        for perfil in os.listdir(base_cache):
+            ruta = os.path.join(base_cache, perfil)
+            if os.path.isdir(ruta):
+                for sub in ["cache2", "startupCache"]:
+                    rutas.append(os.path.join(ruta, sub))
+
+    # startupCache y cache2 en APPDATA (instalaciones antiguas o portátiles)
+    if os.path.isdir(base_perfil):
+        for perfil in os.listdir(base_perfil):
+            ruta = os.path.join(base_perfil, perfil)
+            if os.path.isdir(ruta):
+                for sub in ["cache2", "startupCache"]:
+                    candidate = os.path.join(ruta, sub)
+                    if candidate not in rutas:
+                        rutas.append(candidate)
+
+    return rutas
+
+def _borrar_carpeta_contenido(ruta):
+    """Borra el contenido de una carpeta (no la carpeta en sí). Devuelve (liberado, errores)."""
+    liberado = 0
+    errores = []
+    if not os.path.isdir(ruta):
+        return 0, []
+    for nombre in os.listdir(ruta):
+        elem = os.path.join(ruta, nombre)
+        try:
+            tam = tamanio_carpeta(elem) if os.path.isdir(elem) else os.path.getsize(elem)
+            if os.path.isdir(elem):
+                shutil.rmtree(elem, ignore_errors=False)
+            else:
+                os.remove(elem)
+            liberado += tam
+        except Exception as e:
+            errores.append(str(e))
+    return liberado, errores
+
+def borrar_cache_navegadores():
+    """Borra la caché de Chrome, Edge, Brave y Firefox.
+    Devuelve dict {navegador: (bytes_liberados, num_errores)}."""
+    resultado = {}
+
+    # Chromium (Chrome, Edge, Brave)
+    for nombre, patron in NAVEGADORES_CHROMIUM.items():
+        base = os.path.expandvars(patron)
+        lib_total, err_total = 0, 0
+        for perfil in _perfiles_chromium(base):
+            for sub in CHROMIUM_SUBCARPETAS:
+                ruta = os.path.join(perfil, sub)
+                lib, errs = _borrar_carpeta_contenido(ruta)
+                lib_total += lib
+                err_total += len(errs)
+        resultado[nombre] = (lib_total, err_total)
+
+    # Firefox
+    lib_ff, err_ff = 0, 0
+    for ruta_cache in _perfiles_firefox():
+        lib, errs = _borrar_carpeta_contenido(ruta_cache)
+        lib_ff += lib
+        err_ff += len(errs)
+    resultado["Firefox"] = (lib_ff, err_ff)
+
+    return resultado
+
+def borrar_temporales():
+    """Borra directamente el contenido de las carpetas de archivos temporales.
+    Devuelve (bytes_liberados, errores)."""
+    liberados = 0
+    errores = []
+    for patron in CARPETAS_TEMP:
+        ruta = os.path.expandvars(patron)
+        if not os.path.exists(ruta):
+            continue
+        for nombre in os.listdir(ruta):
+            elemento = os.path.join(ruta, nombre)
+            try:
+                tam = tamanio_carpeta(elemento) if os.path.isdir(elemento) else os.path.getsize(elemento)
+                if os.path.isdir(elemento):
+                    shutil.rmtree(elemento, ignore_errors=False)
+                else:
+                    os.remove(elemento)
+                liberados += tam
+            except Exception as e:
+                errores.append(f"{elemento}: {e}")
+    return liberados, errores
 
 def formatear(b):
     for u in ["B","KB","MB","GB"]:
@@ -291,6 +446,11 @@ class App(tk.Tk):
         tab_disco = tk.Frame(nb, bg=BG)
         nb.add(tab_disco, text="  🧹  Limpieza de disco  ")
         self._build_disco(tab_disco)
+
+        # ─ Pestaña navegadores ─────────────────────────────────
+        tab_nav = tk.Frame(nb, bg=BG)
+        nb.add(tab_nav, text="  🌐  Navegadores  ")
+        self._build_navegadores(tab_nav)
 
     # ─── Pestaña Registro ──────────────────────────────────────
     def _build_registro(self, parent):
@@ -491,8 +651,19 @@ class App(tk.Tk):
 
             # Medir ANTES
             antes = medir_categorias()
+
+            # ── PASO 1: Borrar %TEMP% directamente ──────────────
             self.after(0, lambda: self.lbl_disco.config(
-                text="Limpieza en curso… espera a que se cierre la ventana.", fg=AVISO))
+                text="Borrando archivos temporales del usuario…", fg=AVISO))
+            lib_directo, errores_temp = borrar_temporales()
+            msg_temp = f"  ({formatear(lib_directo)} borrados directamente"
+            if errores_temp:
+                msg_temp += f", {len(errores_temp)} archivos en uso omitidos"
+            msg_temp += ")"
+
+            # ── PASO 2: cleanmgr para el resto ──────────────────
+            self.after(0, lambda: self.lbl_disco.config(
+                text="Limpieza del sistema en curso… espera a que se cierre la ventana.", fg=AVISO))
             try:
                 subprocess.run(["cleanmgr", f"/sagerun:{SAGESET_ID}"])
             except Exception as e:
@@ -506,7 +677,8 @@ class App(tk.Tk):
             despues = medir_categorias()
             self.after(0, lambda: self.btn_disco.config(
                 state="normal", text="🧹  EJECUTAR LIMPIEZA DE DISCO"))
-            self.after(0, lambda: self.lbl_disco.config(text="✅  Limpieza completada.", fg=VERDE))
+            self.after(0, lambda: self.lbl_disco.config(
+                text=f"✅  Limpieza completada.{msg_temp}", fg=VERDE))
             self.after(0, lambda: self._mostrar_informe(antes, despues))
 
         threading.Thread(target=_tarea, daemon=True).start()
@@ -557,6 +729,101 @@ class App(tk.Tk):
         tk.Button(win, text="✖  Cerrar informe", font=FB, bg=ACENTO, fg=FG,
                   activebackground="#b03040", relief="flat", padx=14, pady=6,
                   command=win.destroy).pack(pady=(0,14))
+
+
+    # ─── Pestaña Navegadores ───────────────────────────────────
+    def _build_navegadores(self, parent):
+        tk.Label(parent,
+            text="Borra la caché de Chrome, Edge, Brave y Firefox",
+            font=FB, bg=BG, fg=DIM).pack(pady=(20, 4))
+
+        av = tk.Frame(parent, bg="#2a1800", pady=6)
+        av.pack(fill="x", padx=60, pady=(0, 10))
+        tk.Label(av,
+            text="\u26a0  Cierra los navegadores antes de limpiar. "
+                 "Los archivos en uso se omitirán automáticamente.",
+            font=FS, bg="#2a1800", fg=AVISO, wraplength=680).pack(padx=12)
+
+        self._nav_frame = tk.Frame(parent, bg=BG)
+        self._nav_frame.pack(padx=80, pady=4)
+
+        self._nav_labels = {}
+        ICONOS = {"Chrome": "\U0001f7e1", "Edge": "\U0001f535", "Brave": "\U0001f981", "Firefox": "\U0001f98a"}
+
+        for nombre in list(NAVEGADORES_CHROMIUM.keys()) + ["Firefox"]:
+            fila = tk.Frame(self._nav_frame, bg=CARD, pady=8, padx=14,
+                            highlightbackground=BORDE, highlightthickness=1)
+            fila.pack(fill="x", pady=3)
+            fila.columnconfigure(1, weight=1)
+            tk.Label(fila, text=f"{ICONOS.get(nombre,'\U0001f310')}  {nombre}",
+                     font=FB, bg=CARD, fg=FG, width=14, anchor="w").grid(row=0, column=0, padx=(0,10))
+            lbl_tam = tk.Label(fila, text="Calculando…", font=FS, bg=CARD, fg=DIM, anchor="w")
+            lbl_tam.grid(row=0, column=1, sticky="w")
+            lbl_res = tk.Label(fila, text="", font=FS, bg=CARD, fg=DIM, anchor="e")
+            lbl_res.grid(row=0, column=2, sticky="e", padx=(10,0))
+            self._nav_labels[nombre] = (lbl_tam, lbl_res)
+
+        self.btn_nav = tk.Button(parent,
+            text="\U0001f310  LIMPIAR CAché DE NAVEGADORES",
+            font=("Consolas",12,"bold"), bg=ACENTO, fg=FG,
+            activebackground="#b03040", relief="flat", padx=20, pady=10,
+            command=self._run_navegadores)
+        self.btn_nav.pack(pady=16)
+
+        self.lbl_nav_total = tk.Label(parent, text="", font=FB, bg=BG, fg=DIM)
+        self.lbl_nav_total.pack()
+
+        threading.Thread(target=self._escanear_nav, daemon=True).start()
+
+    def _escanear_nav(self):
+        tareas = {}
+        for nombre, patron in NAVEGADORES_CHROMIUM.items():
+            base = os.path.expandvars(patron)
+            rutas = []
+            for perfil in _perfiles_chromium(base):
+                for sub in CHROMIUM_SUBCARPETAS:
+                    rutas.append(os.path.join(perfil, sub))
+            tareas[nombre] = rutas
+        tareas["Firefox"] = _perfiles_firefox()
+        for nombre, rutas in tareas.items():
+            total = sum(tamanio_carpeta(r) for r in rutas)
+            lbl_tam, _ = self._nav_labels[nombre]
+            texto = formatear(total) if total > 0 else "No instalado / vacc\u00edo"
+            color = FG if total > 0 else DIM
+            self.after(0, lambda t=texto, c=color, l=lbl_tam: l.config(text=t, fg=c))
+
+    def _run_navegadores(self):
+        self.btn_nav.config(state="disabled", text="\u23f3  Limpiando\u2026")
+        self.lbl_nav_total.config(text="Borrando cach\u00e9\u2026", fg=AVISO)
+        for lbl_tam, lbl_res in self._nav_labels.values():
+            lbl_res.config(text="")
+
+        def _tarea():
+            resultado = borrar_cache_navegadores()
+            total = 0
+            for nombre, (liberado, errores) in resultado.items():
+                total += liberado
+                lbl_tam, lbl_res = self._nav_labels[nombre]
+                if liberado > 0:
+                    txt_res = f"\u2705 {formatear(liberado)} liberados"
+                    col_res = VERDE
+                    txt_tam = "0 B"
+                elif errores > 0:
+                    txt_res = f"\u26a0 {errores} archivos en uso"
+                    col_res = AVISO
+                    txt_tam = "\u2014"
+                else:
+                    txt_res = "\u2014  Sin cach\u00e9"
+                    col_res = DIM
+                    txt_tam = "0 B"
+                self.after(0, lambda t=txt_tam, l=lbl_tam: l.config(text=t, fg=DIM))
+                self.after(0, lambda t=txt_res, c=col_res, l=lbl_res: l.config(text=t, fg=c))
+            self.after(0, lambda: self.btn_nav.config(
+                state="normal", text="\U0001f310  LIMPIAR CAché DE NAVEGADORES"))
+            self.after(0, lambda: self.lbl_nav_total.config(
+                text=f"\u2705  Total liberado: {formatear(total)}", fg=VERDE))
+
+        threading.Thread(target=_tarea, daemon=True).start()
 
 
 # ── Arranque ──────────────────────────────────────────────────
