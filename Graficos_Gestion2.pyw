@@ -4,7 +4,6 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import pandas as pd
-# --- CAMBIO PARA EVITAR VENTANA FANTASMA ---
 import matplotlib
 matplotlib.use('Agg') 
 from matplotlib.figure import Figure
@@ -17,7 +16,6 @@ import os
 # CLASE PARA TOOLBAR (SOLO BOTÓN GUARDAR)
 # ============================================
 class ToolbarConNombre(NavigationToolbar2Tk):
-    """Toolbar que solo muestra el botón de guardar con nombre personalizado"""
     
     def __init__(self, canvas, window, nombre_base, nombre_ventana):
         # Filtramos para dejar solo el botón de Guardar ('Save')
@@ -27,7 +25,6 @@ class ToolbarConNombre(NavigationToolbar2Tk):
         super().__init__(canvas, window)
     
     def save_figure(self, *args):
-        """Guarda la figura con el nombre de la ventana"""
         filetypes = self.canvas.get_supported_filetypes_grouped()
         tk_filetypes = [
             (name, "*.%s" % ext) for name, exts in sorted(filetypes.items()) for ext in exts
@@ -281,7 +278,6 @@ class AplicacionGraficos:
         df_ord = self.df_ingresos.sort_values('Importe', ascending=True)
         total = df_ord['Importe'].sum()
         
-        # --- CORRECCIÓN DE COLORES ---
         lista_colores_base = [
             COLORES.get('consejeria', '#2E86C1'), 
             COLORES.get('proyectos', '#F39C12'), 
@@ -300,7 +296,7 @@ class AplicacionGraficos:
         # -----------------------------
 
         if estilo == "Tarta":
-            # Usamos wedgeprops para que se vea más moderno
+            # Usamos wedgeprops
             ax.pie(df_ord['Importe'], labels=df_ord['Fuente'], autopct='%1.1f%%', 
                    startangle=140, colors=colores_finales, 
                    wedgeprops={'edgecolor': 'white', 'linewidth': 2})
@@ -331,7 +327,6 @@ class AplicacionGraficos:
         estilo = self.tipo_gastos.get()
         ventana = self.crear_ventana_grafico(f"Gastos_{estilo}")
         
-        # Ajustamos tamaño si es tarta o barras
         fig = Figure(figsize=(12, 7 if estilo == "Tarta" else max(7, len(self.df_gastos) * 0.25)))
         ax = fig.add_subplot(111)
         
@@ -339,7 +334,6 @@ class AplicacionGraficos:
         total = df_ord['Importe'].sum()
 
         if estilo == "Tarta":
-            # Para tarta de muchos elementos, agrupamos los pequeños en "Otros" para que se vea bien
             if len(df_ord) > 8:
                 otros = df_ord.iloc[:-7]
                 top = df_ord.iloc[-7:]
@@ -394,7 +388,6 @@ class AplicacionGraficos:
         ax.set_xticklabels(self.df_evolucion['Año'])
         ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: f'{x:,.0f}€'))
         
-        # --- ESTO ES LO QUE FALTABA ---
         fig.tight_layout()
         canvas = FigureCanvasTkAgg(fig, ventana)
         ToolbarConNombre(canvas, ventana, self.nombre_base, "Comparativa_Saldos")

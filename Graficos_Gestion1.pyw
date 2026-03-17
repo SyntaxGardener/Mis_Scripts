@@ -28,14 +28,12 @@ import subprocess
 import sys
 
 # ============================================
-# CLASE PERSONALIZADA DEL TOOLBAR (MODIFICADA)
+# CLASE PERSONALIZADA DEL TOOLBAR 
 # ============================================
 class ToolbarMinimo(NavigationToolbar2Tk):
     """Toolbar de matplotlib - VERSIÓN SOLO GUARDAR"""
     
     def __init__(self, canvas, window, nombre_base, app):
-        # --- EL TRUCO ESTÁ AQUÍ ---
-        # Filtramos la lista de herramientas original para dejar solo 'Save'
         self.toolitems = [item for item in NavigationToolbar2Tk.toolitems if item[0] == 'Save']
         
         self.nombre_base = nombre_base
@@ -407,7 +405,7 @@ class AplicacionGraficos:
         ax.set_title(f'Ingresos por Fuente - Total: {total:,.0f}€', fontsize=14, fontweight='bold')
         ax.grid(True, alpha=0.3, axis='x')
         ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:,.0f}€'))
-        ax.set_xlim(0, max_val * 1.35)  # Más espacio para textos largos
+        ax.set_xlim(0, max_val * 1.35)  
         
         plt.tight_layout()
         
