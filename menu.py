@@ -25,16 +25,12 @@ COLORES = {
     "OTROS":          "#90a4ae",   # gris azulado
 }
 
-ICONOS = {
-    "FAVORITOS":      "⭐",
-    "SISTEMA":        "⚙️",
-    "PDF":            "📄",
-    "ADMINISTRACIÓN": "📋",
-    "CLASES":         "📚",
-    "AULA":           "🎮",
-    "AUDIO & VÍDEO":  "🎵",
-    "OTROS":          "📦",
-}
+def hacer_icono_carpeta(parent, color, bg):
+    c = tk.Canvas(parent, width=20, height=20,
+                  bg=bg, highlightthickness=0)
+    c.create_rectangle(1, 5, 8,  9,  fill=color, outline="")
+    c.create_rectangle(1, 8, 19, 19, fill=color, outline="")
+    return c
 
 BG_ROOT     = "#0d0d0d"
 BG_PANEL    = "#141414"
@@ -425,10 +421,8 @@ class MenuFinalPerfecto:
         for cat, lista in cats.items():
             if not lista:
                 continue
-
             abierta = True if termino else self.estados_carpetas.get(cat, False)
             color   = COLORES[cat]
-            icono   = ICONOS.get(cat, "·")
 
             # ── Cabecera de categoría ──
             hdr = tk.Frame(self.scrollable_frame, bg=BG_ROOT)
@@ -436,28 +430,24 @@ class MenuFinalPerfecto:
                      sticky="ew", padx=0, pady=(12, 2))
             hdr.grid_columnconfigure(1, weight=1)
 
-            # Barra de color lateral
-            tk.Frame(hdr, bg=color, width=3).grid(row=0, column=0,
-                                                    sticky="ns", padx=(0, 8))
+            hacer_icono_carpeta(hdr, color, BG_ROOT).grid(row=0, column=0, padx=(4, 6))
 
-            # Texto de categoría
             btn_cat = tk.Button(
                 hdr,
-                text=f"{icono}  {cat}  [{len(lista)}]{'   ▸' if not abierta else '   ▾'}",
+                text=f"{cat}  [{len(lista)}]{'   ▸' if not abierta else '   ▾'}",
                 font=("Segoe UI", 11, "bold"),
-                fg=color, bg="#161616", relief="flat", anchor="w",
-                activeforeground=color, activebackground="#161616",
+                fg="#e0e0e0", bg=BG_ROOT, relief="flat", anchor="w",
+                activeforeground="#ffffff", activebackground=BG_ROOT,
                 cursor="hand2",
                 command=lambda c=cat: self.toggle_carpeta(c)
             )
             btn_cat.grid(row=0, column=1, sticky="ew")
             fila += 1
-
             if abierta:
                 for i, f in enumerate(sorted(lista)):
                     r, c = fila + (i // 2), i % 2
                     self.crear_boton(os.path.join(self.base_dir, f),
-                                     r, c, color, f)
+                                             r, c, color, f)
                 fila += (len(lista) + 1) // 2
 
     def crear_boton(self, ruta, f, c, color, nombre_archivo):
@@ -469,10 +459,10 @@ class MenuFinalPerfecto:
             self.scrollable_frame,
             text=nombre,
             font=("Segoe UI", 10, "bold"),
-            bg=BG_CARD, fg=color,
+            bg=BG_CARD, fg="#cccccc",
             relief="flat", height=2,
             activebackground=BG_CARD_HOV,
-            activeforeground=color,
+            activeforeground="#ffffff",
             cursor="hand2",
             command=lambda: ejecutar_herramienta(ruta, self.root)
         )
