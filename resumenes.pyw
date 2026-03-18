@@ -126,9 +126,9 @@ def resumir_con_gemini(texto: str, api_key: str, tipo: str, idioma: str, seccion
             secs.append(
                 f"{n}) COMPRENSIÓN LECTORA:\n"
                 f"   - Escribe un texto expositivo o informativo original, adaptado al nivel, "
-                f"de un mínimo de 150 palabras y un máximo de 250, relacionado con el tema del documento. "
+                f"de un mínimo de 175 palabras y un máximo de 250. "
                 f"Preséntalo bajo el epígrafe 'TEXTO:'\n"
-                f"   - A continuación, 3 preguntas de comprensión sobre ese texto "
+                f"   - A continuación, 5 preguntas de comprensión sobre ese texto "
                 f"bajo el epígrafe 'PREGUNTAS:'"
             )
             n += 1
@@ -146,7 +146,7 @@ def resumir_con_gemini(texto: str, api_key: str, tipo: str, idioma: str, seccion
             secs.append(
                 f"{n}) EXPRESIÓN ESCRITA:\n"
                 f"   - Propón 1 tarea de redacción concreta y motivadora (carta, descripción, "
-                f"narración breve, correo, diálogo...) relacionada con el tema del documento. "
+                f"narración breve, descripción, exposición, argumentación...) relacionada con el tema del documento. "
                 f"Indica el tipo de texto, la extensión aproximada (entre 80 y 150 palabras) "
                 f"y una pauta o guía de ayuda con 3-4 puntos"
             )
