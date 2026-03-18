@@ -1,8 +1,8 @@
 """
-Resumidor de Documentos con IA (Groq)
+Resumidor de Documentos con IA 
 ========================================
 Requisitos:
-    pip install groq pypdf pdfplumber python-docx requests beautifulsoup4
+    pip install google-generativeai pypdf pdfplumber python-docx requests beautifulsoup4
 """
 
 import tkinter as tk
@@ -92,7 +92,7 @@ def obtener_texto(fuente: str) -> str:
 
 # ── Groq (con fallback automático de modelo) ─────────────────────────────────
 
-def resumir_con_groq(texto: str, api_key: str, tipo: str, idioma: str, secciones_examen: dict = None,
+def resumir_con_gemini(texto: str, api_key: str, tipo: str, idioma: str, secciones_examen: dict = None,
                        log_fn=None) -> str:
     from groq import Groq
     client = Groq(api_key=api_key)
@@ -353,7 +353,7 @@ class ResumidorApp(tk.Tk):
         # Cabecera
         cab = tk.Frame(self, bg=ACENTO, pady=10)
         cab.pack(fill="x")
-        tk.Label(cab, text="✦ Resúmenes · Esquemas · Cuestionarios · Exámenes con IA",
+        tk.Label(cab, text="✦ Resúmenes · Cuestionarios · Exámenes con IA",
                  font=F_TITULO, bg=ACENTO, fg="white").pack(side="left", padx=18)
         tk.Label(cab, text="Powered by Groq · Llama 3.3 (gratuito)",
                  font=F_LABEL, bg=ACENTO, fg="#ccc8ff").pack(side="right", padx=18)
@@ -671,7 +671,7 @@ class ResumidorApp(tk.Tk):
                 def log(msg, _i=i, _t=total):
                     self._set_estado(f"[{_i}/{_t}]  {msg}")
 
-                resultado = resumir_con_groq(texto, api_key, tipo, idioma, secciones, log)
+                resultado = resumir_con_gemini(texto, api_key, tipo, idioma, secciones, log)
 
                 ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                 tipo_slug = tipo.lower().replace(" ", "_")
