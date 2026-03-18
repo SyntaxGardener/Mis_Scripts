@@ -34,3 +34,9 @@ desktop.ini
 error_log.txt
 .vscode/
 .idea/
+
+# API keys y configuración local — NO subir al repositorio
+config.ini
+
+# Carpeta de resúmenes generados
+Resumenes/
