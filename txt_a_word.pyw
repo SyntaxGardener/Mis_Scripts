@@ -189,12 +189,20 @@ def convertir_sin_plantilla(ruta_txt: Path, ruta_docx: Path, autor: str = ""):
     en_clave = False
     prefijos_re = re.compile(
         r'^(RESUMEN|ESQUEMA|EXAMEN|CUESTIONARIO|PUNTOS CLAVE):\s+', re.IGNORECASE)
+    # Para no repetir el título en el cuerpo, registrar qué línea se usó
+    lineas_usadas_titulo = set()
+    for i, linea in enumerate(lineas):
+        l = linea.strip()
+        if l and not es_separador(l) and not l.startswith(("✔", "✘")):
+            lineas_usadas_titulo.add(i)
+            break
 
-    for linea in lineas:
+    for idx_linea, linea in enumerate(lineas):
         l = linea.strip()
         if es_separador(l): continue
         if l.startswith(("✔ Guardado:", "✘ ERROR")): continue
         if prefijos_re.match(l): continue
+        if idx_linea in lineas_usadas_titulo: continue  # saltar línea del título
         if not l:
             doc.add_paragraph(); continue
 
@@ -446,12 +454,20 @@ def convertir_sin_plantilla(ruta_txt: Path, ruta_docx: Path, autor: str = ""):
     en_clave = False
     prefijos_re = re.compile(
         r'^(RESUMEN|ESQUEMA|EXAMEN|CUESTIONARIO|PUNTOS CLAVE):\s+', re.IGNORECASE)
+    # Para no repetir el título en el cuerpo, registrar qué línea se usó
+    lineas_usadas_titulo = set()
+    for i, linea in enumerate(lineas):
+        l = linea.strip()
+        if l and not es_separador(l) and not l.startswith(("✔", "✘")):
+            lineas_usadas_titulo.add(i)
+            break
 
-    for linea in lineas:
+    for idx_linea, linea in enumerate(lineas):
         l = linea.strip()
         if es_separador(l): continue
         if l.startswith(("✔ Guardado:", "✘ ERROR")): continue
         if prefijos_re.match(l): continue
+        if idx_linea in lineas_usadas_titulo: continue  # saltar línea del título
         if not l:
             doc.add_paragraph(); continue
 
@@ -703,7 +719,7 @@ class ConvertidorApp(tk.Tk):
         cab.pack(fill="x")
         tk.Label(cab, text="📄 Convertidor TXT → DOCX",
                  font=F_TITULO, bg=ACENTO, fg="white").pack(side="left", padx=18)
-        tk.Label(cab, text="Complemento al generador de Resúmenes / Exámenes",
+        tk.Label(cab, text="Complemento a resúmenes y exámenes generados con Groq",
                  font=F_LABEL, bg=ACENTO, fg="#ccc8ff").pack(side="right", padx=18)
 
         cuerpo = tk.Frame(self, bg=BG, padx=20, pady=12)
