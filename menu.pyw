@@ -481,7 +481,7 @@ class MenuFinalPerfecto:
             return "SISTEMA"
         if any(x in n for x in ["pdf", "informe", "word", "doc", "tabla", "docx"]):
             return "PDF/DOCX"
-        if any(x in n for x in ["examenes", "apuntes", "notas"]):
+        if any(x in n for x in ["examenes", "apuntes", "resumen", "notas"]):
             return "CLASES"
         if any(x in n for x in ["video", "audio", "caratula", "youtube",
                                   "voz", "mezclador"]):

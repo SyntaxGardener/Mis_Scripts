@@ -68,6 +68,8 @@ def check_and_update():
         ("pydub", "pydub", "Manipulación de Audio", False),
         ("docxtpl", "docxtpl", "Plantillas Word (Jinja2)", False),
         ("bs4", "beautifulsoup4", "Web Scraping", True),
+        ("google", "google-generativeai", "Google API", False),
+        ("groq", "groq", "Groq API", False),
         ("pikepdf", "pikepdf", "Edición y Cifrado PDF", False),
         ("pygame", "pygame", "Reproducción Audio", False)        
     ]
