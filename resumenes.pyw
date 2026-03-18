@@ -125,7 +125,7 @@ def resumir_con_gemini(texto: str, api_key: str, tipo: str, idioma: str, seccion
         if secciones_examen.get("comprension_lectora"):
             secs.append(
                 f"{n}) COMPRENSIÓN LECTORA:\n"
-                f"   - Escribe un texto expositivo o informativo original, adaptado al nivel, "
+                f"   - Escribe un texto, descriptivo, expositivo o argumentativo original, adaptado al nivel, y a los tipos de texto que se mencionan en el documneto"
                 f"de un mínimo de 175 palabras y un máximo de 250. "
                 f"Preséntalo bajo el epígrafe 'TEXTO:'\n"
                 f"   - A continuación, 5 preguntas de comprensión sobre ese texto "
@@ -137,8 +137,8 @@ def resumir_con_gemini(texto: str, api_key: str, tipo: str, idioma: str, seccion
                 f"{n}) COMPRENSIÓN LECTORA (TEXTO LITERARIO):\n"
                 f"   - Escribe un fragmento literario original (narrativo o poético), "
                 f"adaptado al nivel y relacionado temáticamente con el documento, "
-                f"de un mínimo de 150 palabras y un máximo de 220. Preséntalo bajo el epígrafe 'TEXTO:'\n"
-                f"   - A continuación, 3 preguntas de comprensión lectora y análisis literario "
+                f"de un mínimo de 200 palabras y un máximo de 300, preferiblemente de alguno de los autores que se mencionan en el documento. Preséntalo bajo el epígrafe 'TEXTO:'\n"
+                f"   - A continuación, 5 preguntas de comprensión lectora y análisis literario "
                 f"bajo el epígrafe 'PREGUNTAS:'"
             )
             clave_secs.append(f"Sección {n} — Comprensión literaria"); n += 1
@@ -146,7 +146,7 @@ def resumir_con_gemini(texto: str, api_key: str, tipo: str, idioma: str, seccion
             secs.append(
                 f"{n}) EXPRESIÓN ESCRITA:\n"
                 f"   - Propón 1 tarea de redacción concreta y motivadora (carta, descripción, "
-                f"narración breve, descripción, exposición, argumentación...) relacionada con el tema del documento. "
+                f"narración breve, descripción, exposición, argumentación, creación literaria...) relacionada con el tipo de actividades de expresión escrita que aparecen en el documento. "
                 f"Indica el tipo de texto, la extensión aproximada (entre 80 y 150 palabras) "
                 f"y una pauta o guía de ayuda con 3-4 puntos"
             )
@@ -419,12 +419,12 @@ class ResumidorApp(tk.Tk):
         sec_labels = {
             "verdadero_falso":         "Verdadero / Falso",
             "opcion_multiple":         "Opción múltiple",
-            "comprension_lectora":     "Comprensión lectora (texto expositivo)",
+            "comprension_lectora":     "Comprensión lectora",
             "comprension_literaria":   "Comprensión lectora (texto literario)",
             "expresion_escrita":       "Expresión escrita (redacción)",
             "comprension_oral":        "Comprensión oral",
             "preguntas_cortas":        "Preguntas cortas",
-            "desarrollo":              "Desarrollo / Redacción",
+            "desarrollo":              "Desarrollo",
         }
         for key, label in sec_labels.items():
             tk.Checkbutton(self.frame_secciones, text=label,
