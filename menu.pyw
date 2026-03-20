@@ -107,7 +107,7 @@ class MenuFinalPerfecto:
 
         # Rutas dinámicas
         self.base_dir  = os.path.dirname(os.path.abspath(__file__))
-        self.ruta_git  = os.path.normpath(os.path.join(self.base_dir, "..", "PortableGit", "cmd", "git.exe"))
+        self.ruta_git  = self._detectar_portable_git()
         self.ruta_config = os.path.normpath(os.path.join(self.base_dir, "..", "Config"))
         self.ruta_creds  = os.path.join(self.ruta_config, ".git-credentials").replace("\\", "/")
 
@@ -244,89 +244,186 @@ class MenuFinalPerfecto:
         return btn
 
     # ── GIT ───────────────────────────────────
+    def _detectar_portable_git(self):
+        """Busca git.exe ejecutable en varias ubicaciones del USB.
+        Prioriza mingw64/bin/git.exe (binario real) sobre cmd/git.exe (lanzador)."""
+        unidad = os.path.splitdrive(self.base_dir)[0]  # p.ej. "E:"
+        raices = [
+            os.path.join(self.base_dir, "..", "PortableGit"),
+            os.path.join(unidad, os.sep, "PortableGit"),
+            os.path.join(self.base_dir, "..", "..", "PortableGit"),
+        ]
+        # mingw64/bin/git.exe es el binario real; cmd/git.exe es un lanzador
+        # que puede fallar con WinError 2 si el entorno no está preparado
+        subcarpetas = [
+            os.path.join("mingw64", "bin", "git.exe"),
+            os.path.join("cmd", "git.exe"),
+            os.path.join("bin", "git.exe"),
+        ]
+        for raiz in raices:
+            for sub in subcarpetas:
+                ruta = os.path.normpath(os.path.join(raiz, sub))
+                if os.path.exists(ruta):
+                    return ruta
+        return None  # Fallback al git del sistema
+
+    def _entorno_git(self):
+        """Entorno con PATH y HOME correctos para PortableGit.
+        Usa un .gitconfig propio en el USB para evitar problemas de ownership
+        y no depender del usuario de Windows."""
+        env = os.environ.copy()
+        if self.ruta_git and os.path.exists(self.ruta_git):
+            git_dir  = os.path.dirname(self.ruta_git)
+            if os.path.basename(os.path.dirname(git_dir)).lower() == "mingw64":
+                git_root = os.path.normpath(os.path.join(git_dir, "..", ".."))
+            else:
+                git_root = os.path.normpath(os.path.join(git_dir, ".."))
+            extra = os.pathsep.join([
+                os.path.join(git_root, "mingw64", "bin"),
+                os.path.join(git_root, "cmd"),
+                os.path.join(git_root, "bin"),
+                os.path.join(git_root, "usr", "bin"),
+                git_dir,
+            ])
+            env["PATH"] = extra + os.pathsep + env.get("PATH", "")
+            exec_path = os.path.join(git_root, "mingw64", "libexec", "git-core")
+            if os.path.isdir(exec_path):
+                env["GIT_EXEC_PATH"] = exec_path
+
+        # .gitconfig propio en el USB → independiente del usuario de Windows
+        gitconfig_usb = os.path.join(self.ruta_config, ".gitconfig")
+        self._asegurar_gitconfig(gitconfig_usb)
+        env["GIT_CONFIG_GLOBAL"] = gitconfig_usb
+        # HOME también apuntará a Config/ para evitar cualquier lectura del perfil
+        env["HOME"] = self.ruta_config
+        return env
+
+    def _asegurar_gitconfig(self, ruta):
+        """Crea o completa el .gitconfig del USB con safe.directory=* y user básico."""
+        lineas_requeridas = {
+            "[safe]": "	directory = *",
+            "[credential]": f"	helper = store --file {self.ruta_creds}",
+        }
+        contenido = ""
+        if os.path.exists(ruta):
+            with open(ruta, "r", encoding="utf-8") as f:
+                contenido = f.read()
+
+        for seccion, valor in lineas_requeridas.items():
+            if valor.strip() not in contenido:
+                if seccion not in contenido:
+                    contenido += "\n" + seccion + "\n" + valor + "\n"
+                else:
+                    # insertar tras la cabecera de sección
+                    contenido = contenido.replace(
+                        seccion, seccion + "\n" + valor, 1)
+
+        with open(ruta, "w", encoding="utf-8") as f:
+            f.write(contenido)
+
     def obtener_comando_git(self):
-        return self.ruta_git if os.path.exists(self.ruta_git) else "git"
+        if self.ruta_git and os.path.exists(self.ruta_git):
+            return self.ruta_git
+        return "git"
+
+    def _git_run(self, args, **kwargs):
+        """Ejecuta git con el entorno correcto. Nunca lanza excepción."""
+        cmd = self.obtener_comando_git()
+        env = self._entorno_git()
+        kw = dict(creationflags=subprocess.CREATE_NO_WINDOW,
+                  env=env, capture_output=True, text=True)
+        kw.update(kwargs)
+        try:
+            return subprocess.run([cmd] + args, **kw)
+        except Exception as e:
+            class _R:
+                returncode = -1
+                stdout = ""
+                stderr = str(e)
+            return _R()
 
     def comprobar_git_status(self):
-        try:
-            cmd = self.obtener_comando_git()
-            subprocess.run([cmd, "config", "--global", "safe.directory", "*"], creationflags=subprocess.CREATE_NO_WINDOW)
-            subprocess.run([cmd, "config", "--global", "user.name", "SyntaxGardener"], creationflags=subprocess.CREATE_NO_WINDOW)
-            subprocess.run([cmd, "config", "--global", "user.email", "fenokitie@gmail.com"], creationflags=subprocess.CREATE_NO_WINDOW)
-            
-            subprocess.run([cmd, "config", "credential.helper", f"store --file {self.ruta_creds}"], 
-                           cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
-            
-            subprocess.run([cmd, "fetch"], cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
+        # 1. safe.directory local (no necesita HOME escribible)
+        self._git_run(["config", "--local", "safe.directory", self.base_dir],
+                      cwd=self.base_dir)
+        # 2. credential helper local al repo
+        self._git_run(["config", "--local", "credential.helper",
+                       f"store --file {self.ruta_creds}"],
+                      cwd=self.base_dir)
+        # 3. fetch (puede fallar sin internet, no es fatal)
+        self._git_run(["fetch"], cwd=self.base_dir)
 
-            res_locales = subprocess.check_output(
-                [cmd, "status", "--porcelain"], cwd=self.base_dir,
-                text=True, creationflags=subprocess.CREATE_NO_WINDOW).strip()
-            num_locales = len(res_locales.split('\n')) if res_locales else 0
+        # 4. cambios locales pendientes
+        r_status = self._git_run(["status", "--porcelain"], cwd=self.base_dir)
+        if r_status.returncode != 0:
+            err = (r_status.stderr or "error desconocido").strip()[:70]
+            self.root.after(0, lambda m=err: self.lbl_git.config(
+                text=f"✗  {m}", fg="#c0392b"))
+            return
+        lineas = [l for l in r_status.stdout.strip().splitlines() if l]
+        num_locales = len(lineas)
 
-            atrasado_raw = subprocess.check_output(
-                [cmd, "rev-list", "HEAD..origin/main", "--count"],
-                cwd=self.base_dir, text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW).strip()
-            atrasado = int(atrasado_raw) if atrasado_raw.isdigit() else 0
+        # 5. commits por descargar
+        r_rev = self._git_run(["rev-list", "HEAD..origin/main", "--count"],
+                               cwd=self.base_dir)
+        atrasado = 0
+        if r_rev.returncode == 0:
+            raw = r_rev.stdout.strip()
+            atrasado = int(raw) if raw.isdigit() else 0
 
-            # Último commit
-            try:
-                commit_msg = subprocess.check_output(
-                    [cmd, "log", "-1", "--pretty=format:%s · %ar"],
-                    cwd=self.base_dir, text=True, encoding="utf-8",
-                    creationflags=subprocess.CREATE_NO_WINDOW).strip()
-                # Abreviar unidades de tiempo
-                for largo, corto in [
-                    (" seconds ago", "s"), (" second ago", "s"),
-                    (" minutes ago", "m"), (" minute ago", "m"),
-                    (" hours ago", "h"),   (" hour ago", "h"),
-                    (" days ago", "d"),    (" day ago", "d"),
-                    (" weeks ago", "w"),   (" week ago", "w"),
-                    (" months ago", "mo"), (" month ago", "mo"),
-                    (" years ago", "a"),   (" year ago", "a"),
-                ]:
-                    commit_msg = commit_msg.replace(largo, corto)
-                commit_msg = commit_msg[:55] + "…" if len(commit_msg) > 55 else commit_msg
-            except:
-                commit_msg = ""
+        # 6. último commit
+        commit_msg = ""
+        r_log = self._git_run(["log", "-1", "--pretty=format:%s · %ar"],
+                               cwd=self.base_dir)
+        if r_log.returncode == 0:
+            commit_msg = r_log.stdout.strip()
+            for largo, corto in [
+                (" seconds ago", "s"), (" second ago", "s"),
+                (" minutes ago", "m"), (" minute ago", "m"),
+                (" hours ago", "h"),   (" hour ago", "h"),
+                (" days ago", "d"),    (" day ago", "d"),
+                (" weeks ago", "w"),   (" week ago", "w"),
+                (" months ago", "mo"), (" month ago", "mo"),
+                (" years ago", "a"),   (" year ago", "a"),
+            ]:
+                commit_msg = commit_msg.replace(largo, corto)
+            commit_msg = commit_msg[:55] + "…" if len(commit_msg) > 55 else commit_msg
+        self.root.after(0, lambda m=commit_msg:
+                        self.lbl_commit.config(text=m))
 
-            self.root.after(0, lambda m=commit_msg:
-                            self.lbl_commit.config(text=m))
-
-            if num_locales > 0:
-                self.root.after(0, lambda: self.lbl_git.config(
-                    text=f"⬆  {num_locales} pendientes de subida", fg="#ff8c00"))
-                self.root.after(0, lambda: self.btn_push.config(
-                    bg="#7a3800", fg="#ffb347", state="normal",
-                    text=f"☁ SUBIR ({num_locales})"))
-                self.root.after(0, lambda: self.btn_pull.config(state="normal"))
-            elif atrasado > 0:
-                self.root.after(0, lambda: self.lbl_git.config(
-                    text=f"⬇  {atrasado} en nube", fg="#4dd0e1"))
-                self.root.after(0, lambda: self.btn_push.config(
-                    bg="#1c1c1c", fg=FG_DIM, state="disabled", text="☁ SUBIR"))
-                self.root.after(0, lambda: self.btn_pull.config(
-                    bg="#0d3640", fg="#4dd0e1", state="normal",
-                    text=f"📥 DESCARGAR ({atrasado})"))
-            else:
-                self.root.after(0, lambda: self.lbl_git.config(
-                    text="✓  sincronizado", fg="#4caf50"))
-                self.root.after(0, lambda: self.btn_push.config(
-                    bg="#1c1c1c", fg=FG_DIM, state="disabled", text="☁ SUBIR"))
-                self.root.after(0, lambda: self.btn_pull.config(
-                    bg="#1c1c1c", fg=FG_DIM, state="disabled", text="📥 DESCARGAR"))
-        except:
+        # 7. actualizar UI según estado
+        if num_locales > 0:
             self.root.after(0, lambda: self.lbl_git.config(
-                text="✗  git no disponible", fg="#555"))
+                text=f"⬆  {num_locales} pendientes de subida", fg="#ff8c00"))
+            self.root.after(0, lambda: self.btn_push.config(
+                bg="#7a3800", fg="#ffb347", state="normal",
+                text=f"☁ SUBIR ({num_locales})"))
+            self.root.after(0, lambda: self.btn_pull.config(state="normal"))
+        elif atrasado > 0:
+            self.root.after(0, lambda: self.lbl_git.config(
+                text=f"⬇  {atrasado} en nube", fg="#4dd0e1"))
+            self.root.after(0, lambda: self.btn_push.config(
+                bg="#1c1c1c", fg=FG_DIM, state="disabled", text="☁ SUBIR"))
+            self.root.after(0, lambda: self.btn_pull.config(
+                bg="#0d3640", fg="#4dd0e1", state="normal",
+                text=f"📥 DESCARGAR ({atrasado})"))
+        else:
+            self.root.after(0, lambda: self.lbl_git.config(
+                text="✓  sincronizado", fg="#4caf50"))
+            self.root.after(0, lambda: self.btn_push.config(
+                bg="#1c1c1c", fg=FG_DIM, state="disabled", text="☁ SUBIR"))
+            self.root.after(0, lambda: self.btn_pull.config(
+                bg="#1c1c1c", fg=FG_DIM, state="disabled", text="📥 DESCARGAR"))
 
     def realizar_push(self):
         cmd = self.obtener_comando_git()
+        env = self._entorno_git()
         mensaje = simpledialog.askstring("Subir cambios",
                                          "Mensaje del commit:", parent=self.root)
         if mensaje:
             try:
-                kw = dict(cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
+                kw = dict(cwd=self.base_dir,
+                          creationflags=subprocess.CREATE_NO_WINDOW, env=env)
                 subprocess.run([cmd, "config", "credential.helper",
                                 f"store --file {self.ruta_creds}"], **kw)
                 subprocess.run([cmd, "add", "."], check=True, **kw)
@@ -342,8 +439,10 @@ class MenuFinalPerfecto:
 
     def realizar_pull(self):
         cmd = self.obtener_comando_git()
+        env = self._entorno_git()
         try:
-            kw = dict(cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
+            kw = dict(cwd=self.base_dir,
+                      creationflags=subprocess.CREATE_NO_WINDOW, env=env)
             subprocess.run([cmd, "rebase", "--abort"], **kw)
             subprocess.run([cmd, "config", "credential.helper",
                             f"store --file {self.ruta_creds}"], **kw)
@@ -354,8 +453,7 @@ class MenuFinalPerfecto:
                 self.actualizar_todo()
             else:
                 messagebox.showwarning("Atención",
-                    "No se pudo sincronizar.\n"
-                    "Es posible que haya cambios locales que choquen con la nube.")
+                    f"No se pudo sincronizar.\n{res.stderr or 'Comprueba los cambios locales.'}")
         except Exception as e:
             messagebox.showerror("Error", f"Error al descargar: {e}")
 
@@ -364,8 +462,10 @@ class MenuFinalPerfecto:
             "Esto cancelará errores de rebase/merge y\n"
             "sincronizará el repositorio con GitHub.\n\n¿Continuar?"):
             cmd = self.obtener_comando_git()
+            env = self._entorno_git()
             try:
-                kw = dict(cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
+                kw = dict(cwd=self.base_dir,
+                          creationflags=subprocess.CREATE_NO_WINDOW, env=env)
                 subprocess.run([cmd, "rebase", "--abort"], **kw)
                 subprocess.run([cmd, "merge",  "--abort"], **kw)
                 subprocess.run([cmd, "fetch", "origin"], **kw)
@@ -381,7 +481,13 @@ class MenuFinalPerfecto:
 
     # ── UI: BARRA DE ESTADO ───────────────────
     def actualizar_barra_estado(self):
-        modo = "USB · PORTABLE" if "C:" not in self.base_dir.upper() else "PC LOCAL"
+        es_usb = "C:" not in self.base_dir.upper()
+        modo = "USB · PORTABLE" if es_usb else "PC LOCAL"
+        if es_usb:
+            if self.ruta_git and os.path.exists(self.ruta_git):
+                modo += "  ✓ git"
+            else:
+                modo += "  ✗ git no encontrado"
         self.lbl_modo.config(text=f"📍  {modo}")
         self.lbl_info.config(text=obtener_info_sistema())
 

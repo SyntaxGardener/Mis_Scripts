@@ -26,7 +26,7 @@ class GeneradorSencillo:
 
         for txt, var, cmd in [
             ("1. Selecciona el Excel:", self.excel_path, self.sel_ex),
-            ("2. Selecciona la Plantilla Word:", self.template_path, self.sel_wd),
+            ("2. Selecciona la Plantilla Word - campos con {{ }} :", self.template_path, self.sel_wd),
             ("3. Carpeta de destino:", self.output_dir, self.sel_dir)
         ]:
             tk.Label(self.root, text=txt).pack(anchor="w", **pad)
