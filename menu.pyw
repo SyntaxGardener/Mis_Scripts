@@ -107,7 +107,7 @@ class MenuFinalPerfecto:
 
         # Rutas dinámicas
         self.base_dir  = os.path.dirname(os.path.abspath(__file__))
-        self.ruta_git  = os.path.normpath(os.path.join(self.base_dir, "..", "PortableGit", "bin", "git.exe"))
+        self.ruta_git  = os.path.normpath(os.path.join(self.base_dir, "..", "PortableGit", "cmd", "git.exe"))
         self.ruta_config = os.path.normpath(os.path.join(self.base_dir, "..", "Config"))
         self.ruta_creds  = os.path.join(self.ruta_config, ".git-credentials").replace("\\", "/")
 
