@@ -250,15 +250,14 @@ class MenuFinalPerfecto:
     def comprobar_git_status(self):
         try:
             cmd = self.obtener_comando_git()
-            subprocess.run([cmd, "config", "--global", "safe.directory", "*"],
-                           creationflags=subprocess.CREATE_NO_WINDOW)
-            subprocess.run([cmd, "config", "credential.helper",
-                            f"store --file {self.ruta_creds}"],
-                           cwd=self.base_dir,
-                           creationflags=subprocess.CREATE_NO_WINDOW)
-            subprocess.run([cmd, "fetch"],
-                           cwd=self.base_dir,
-                           creationflags=subprocess.CREATE_NO_WINDOW)
+            subprocess.run([cmd, "config", "--global", "safe.directory", "*"], creationflags=subprocess.CREATE_NO_WINDOW)
+            subprocess.run([cmd, "config", "--global", "user.name", "SyntaxGardener"], creationflags=subprocess.CREATE_NO_WINDOW)
+            subprocess.run([cmd, "config", "--global", "user.email", "fenokitie@gmail.com"], creationflags=subprocess.CREATE_NO_WINDOW)
+            
+            subprocess.run([cmd, "config", "credential.helper", f"store --file {self.ruta_creds}"], 
+                           cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
+            
+            subprocess.run([cmd, "fetch"], cwd=self.base_dir, creationflags=subprocess.CREATE_NO_WINDOW)
 
             res_locales = subprocess.check_output(
                 [cmd, "status", "--porcelain"], cwd=self.base_dir,
