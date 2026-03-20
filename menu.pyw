@@ -331,7 +331,7 @@ class MenuFinalPerfecto:
         cmd = self.obtener_comando_git()
         env = self._entorno_git()
         kw = dict(creationflags=subprocess.CREATE_NO_WINDOW,
-                  env=env, capture_output=True, text=True)
+                  env=env, capture_output=True, text=True, encoding="utf-8")
         kw.update(kwargs)
         try:
             return subprocess.run([cmd] + args, **kw)
