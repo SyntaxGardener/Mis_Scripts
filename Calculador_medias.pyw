@@ -59,7 +59,7 @@ def procesar_pdf(ruta_pdf, log_func):
 class AppCalculadora:
     def __init__(self, root):
         self.root = root
-        self.root.title("Calculadora ESPAD")
+        self.root.title("Calculadora de Notas medias ESPA/D")
         # 1. Definimos el tamaño que queremos
         ancho = 800
         alto = 750
@@ -68,9 +68,9 @@ class AppCalculadora:
         pos_x = (self.root.winfo_screenwidth() // 2) - (ancho // 2)
         
         # 3. Aplicamos la magia: Ancho x Alto + Derecha + Arriba (20)
-        self.root.geometry(f"{ancho}x{alto}+{pos_x}+20")
+        self.root.geometry(f"{ancho}x{alto}+{pos_x}+10")
         
-        tk.Label(root, text="Calculadora de Expedientes ESPAD", font=("Arial", 14, "bold")).pack(pady=10)
+        tk.Label(root, text="Calculadora de Notas Medias a partir de Expedientes ESPA(D)", font=("Arial", 14, "bold")).pack(pady=10)
 
         frame_dest = tk.LabelFrame(root, text=" Carpeta de Destino ", padx=10, pady=10)
         frame_dest.pack(pady=5, padx=20, fill="x")
