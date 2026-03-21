@@ -5,20 +5,18 @@ import threading
 import os
 import sys
 import subprocess
+import requests
 import json
+import google.genai as genai
+from google.genai import types as genai_types
 import time
 from pathlib import Path
 from datetime import datetime
-
 import configparser as _cp, pathlib as _pl
 
 # ── Modelos disponibles ───────────────────────────────────────────────────────
 
-MODELOS_GEMINI = [
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-1.5-flash-latest",
-]
+MODELOS_GEMINI = ["gemini-1.5-flash"]
 
 MODELOS_GROQ = [
     "llama-3.3-70b-versatile",
@@ -273,50 +271,58 @@ def construir_prompt(tipo: str, idioma: str, secciones_examen: dict = None) -> d
 # ── Llamada a Gemini ──────────────────────────────────────────────────────────
 
 def llamar_gemini(prompt: str, api_key: str, log_fn=None) -> tuple:
-    import google.genai as genai
-    from google.genai import types as genai_types
-    client = genai.Client(api_key=api_key)
-    ultimo_error = None
-    for nombre_modelo in MODELOS_GEMINI:
-        if log_fn:
-            log_fn(f"  Gemini — modelo: {nombre_modelo}")
-        config = genai_types.GenerateContentConfig(
-            max_output_tokens=8192,
-            temperature=0.3,
-            system_instruction="Eres un asistente experto en análisis y síntesis de documentos.",
-        )
-        for intento in range(2):
-            try:
-                resp = client.models.generate_content(
-                    model=nombre_modelo,
-                    contents=prompt,
-                    config=config,
-                )
-                return resp.text, nombre_modelo
-            except Exception as e:
-                ultimo_error = e
-                msg = str(e).lower()
-                es_no_disponible = "404" in msg or "not found" in msg or "not supported" in msg
-                es_cuota = ("429" in msg or "resource_exhausted" in msg
-                            or ("quota" in msg and not es_no_disponible))
-                if es_no_disponible:
-                    if log_fn:
-                        log_fn(f"  ⚠ Modelo {nombre_modelo} no disponible, probando siguiente…")
-                    break
-                if es_cuota:
-                    if intento == 0:
-                        if log_fn:
-                            log_fn(f"  ⚠ Límite de cuota con {nombre_modelo}. Reintentando en 10s…")
-                        time.sleep(10)
-                        continue
-                    else:
-                        raise Exception(
-                            "Límite de cuota de Gemini agotado.\n"
-                            "Espera unos minutos y vuelve a intentarlo."
-                        )
-                break
-    raise Exception(f"Gemini: error tras todos los modelos: {ultimo_error}")
+    import requests
+    import json
+    import time
 
+    # 1. Función interna para listar modelos disponibles si el predeterminado falla
+    def obtener_modelo_valido():
+        list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+        try:
+            res = requests.get(list_url, timeout=10)
+            if res.status_code == 200:
+                modelos = res.json().get('models', [])
+                # Buscamos cualquiera que diga '1.5-flash' o simplemente el primero que soporte generar contenido
+                for m in modelos:
+                    nombre = m['name'].split('/')[-1]
+                    if "1.5-flash" in nombre and "generateContent" in m.get('supportedGenerationMethods', []):
+                        return nombre
+                # Si no hay flash, devolvemos el primero disponible
+                return modelos[0]['name'].split('/')[-1]
+        except: pass
+        return "gemini-1.5-flash" # Fallback por si acaso
+
+    nombre_modelo = "gemini-1.5-flash"
+    ultimo_error = None
+
+    for intento in range(2):
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{nombre_modelo}:generateContent?key={api_key}"
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        
+        try:
+            if log_fn: log_fn(f"  Intentando con: {nombre_modelo}...")
+            response = requests.post(url, json=payload, timeout=90)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data['candidates'][0]['content']['parts'][0]['text'], nombre_modelo
+            
+            elif response.status_code == 404:
+                if log_fn: log_fn("  ⚠ Modelo no encontrado. Buscando alternativa...")
+                nombre_modelo = obtener_modelo_valido() # <--- AQUÍ BUSCAMOS EL NOMBRE REAL
+                continue 
+            
+            elif response.status_code == 429:
+                time.sleep(65)
+                continue
+            else:
+                raise Exception(f"Error {response.status_code}")
+
+        except Exception as e:
+            ultimo_error = e
+            time.sleep(2)
+            
+    raise Exception(f"Fallo total. Google dice: {ultimo_error}")
 
 # ── Llamada a Groq ────────────────────────────────────────────────────────────
 
@@ -385,7 +391,7 @@ def llamar_claude(prompt: str, api_key: str, log_fn=None) -> tuple:
 
 # ── Motor principal ───────────────────────────────────────────────────────────
 
-CHUNK_GEMINI = 60_000
+CHUNK_GEMINI = 15_000
 CHUNK_GROQ   = 20_000
 SOLAPAMIENTO = 500
 
@@ -469,7 +475,7 @@ def resumir(texto: str, api_key: str, proveedor: str, tipo: str, idioma: str,
         if i < total_frags:
             if log_fn:
                 log_fn("  Pausa entre fragmentos…")
-            time.sleep(8 if proveedor == "Groq" else 3)
+            time.sleep(8 if proveedor == "Groq" else 40)
 
     if log_fn:
         log_fn("  Generando síntesis final…")
