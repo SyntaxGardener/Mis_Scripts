@@ -1,8 +1,3 @@
-"""
-generar_pptx.py
-Genera el PPTX a partir de la estructura JSON creada por Claude.
-Solo necesita: python-pptx y Pillow  (pip install python-pptx pillow)
-"""
 
 import io
 import json
@@ -17,7 +12,7 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches, Pt, Emu
 
-# ── Unidades: todo en pulgadas, igual que el script Node ──────────────
+# ── Unidades: todo en pulgadas ──────────────
 W  = 10.0   # ancho slide
 H  = 5.625  # alto slide
 

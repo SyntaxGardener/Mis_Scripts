@@ -500,7 +500,7 @@ class MenuFinalPerfecto:
         if termino in ("buscar script…", ""):
             termino = ""
 
-        ignorar    = {"lanzador.bat", "iniciar.vbs", "favoritos.txt"}
+        ignorar    = {"lanzador.bat", "iniciar.vbs", "generar_pptx.py", "favoritos.txt"}
         script_act = os.path.basename(__file__)
 
         try:
