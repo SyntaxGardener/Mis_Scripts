@@ -24,8 +24,8 @@ Colección de scripts Python para profesores. Juegos educativos, herramientas de
 | Script | Descripción |
 |--------|-------------|
 | `games.pyw` | Menú central con acceso a tres juegos en inglés y español: hangman, spelling bee y wordle |
-| `Pasapalabra.pyw` | Juego tipo Pasapalabra con rosco interactivo. hay que subir docx con tabla de 3 columnas: Letra - Pista - Respuesta |
-| `Bingo.pyw` | Bingo con cartones generados automáticamente, para usar en inglés o español, se puede seleccionar rango de números |
+| `Pasapalabra.pyw` | Juego tipo Pasapalabra con rosco interactivo. Hay que subir docx con tabla de 3 columnas: Letra - Pista - Respuesta |
+| `Bingo.pyw` | Bingo con cartones generados automáticamente, para usar en inglés o español. Se puede seleccionar rango de números |
 
 
 Los juegos incluyen listas de palabras en español e inglés en varios niveles:
@@ -37,16 +37,15 @@ Los juegos incluyen listas de palabras en español e inglés en varios niveles:
 
 | Script | Descripción |
 |--------|-------------|
-| `examenes.pyw` | Generador de exámenes |
+| `examenes.pyw` | Generador de exámenes extrayendo preguntas de apuntes |
 | `resumenes.pyw` | Generador de resúmenes de texto |
 | `presentaciones.pyw` | Herramienta para crear presentaciones |
-| `generar_pptx.py` | Generación de archivos PowerPoint (.pptx) |
 | `excel_notas.pyw` | Generador de hoja Excel para registro de notas a partir de listados de Sauce |
-| `horarios_por_ensenanza.pyw` | Generador de horarios por enseñanza a partir de horarios proporcionados por la Jefa de estudios de mi centro |
+| `horarios_por_ensenanza.pyw` | Generador de horarios por enseñanza a partir de horarios proporcionados por la Jefa de estudios de mi centro. |
 | `Calculador_medias.pyw` | Calculadora de medias y calificaciones a partir de historiales académicos generados por Sauce|
 | `word_a_excel.pyw` | Extrae tablas de Word y las pasa a un Excel |
-| `generar_docs_multiples.pyw` | Generación de documentos en lote . Se necesita aportar plantilla docx y excel con datos del alumnado|
-| `Picker.pyw` | Selector aleatorio (p.ej. para elegir alumnos) |
+| `generar_docs_multiples.pyw` | Generación de documentos en lote . Se necesita aportar plantilla docx y excel con datos del alumnado. 
+`Picker.pyw` | Selector aleatorio (p.ej. para elegir alumnos) |
 | `Cronometro.pyw` | Cronómetro para clase |
 | `Traductor.pyw` | Traductor de textos orales y escritos. Varios idiomas |
 | `Txt_Voz.pyw` | Conversor de texto a voz |
@@ -61,9 +60,9 @@ Los juegos incluyen listas de palabras en español e inglés en varios niveles:
 | `Separador_PDF.pyw` | Divide PDFs por páginas o rangos |
 | `Imagen_a_pdf.pyw` | Convierte imágenes a PDF |
 | `separador_de_apuntes.pyw` | Separa apuntes en documentos individuales |
-| `separador_de_certificados.pyw` | Separa certificados genrados por Sauce en PDF individual por alumno |
+| `separador_de_certificados.pyw` | Separa certificados generados por Sauce en PDF individual por alumno |
 | `limpiador_metadatos.pyw` | Elimina metadatos de archivos PDF |
-| `formateador.pyw` | Formateador de documentos (.txt > .docx o .pdf |
+| `formateador.pyw` | Formateador de documentos (.txt > .docx o .pdf) |
 
 ---
 
@@ -84,11 +83,11 @@ Los juegos incluyen listas de palabras en español e inglés en varios niveles:
 
 | Script | Descripción |
 |--------|-------------|
-| `Generar_certificados.pyw` | Generador de certificados en PDF |
+| `Generar_certificados.pyw` | Generador de certificados en PDF. Yo lo uso para generar certificados supletorios de título a partir de una plantilla y un excel con los datos del alumnado |
 | `diplomas.pyw` | Generador de diplomas a partir de una plantilla (de Canva) y un excel con los datos |
 | `Diligencia_Titulo.pyw` | Genera diligencias de título para Sauce |
-| `Graficos_Gestion.pyw` | Gráficos para presentar la Cuenta de gestión del centro a partir de un excel |
-| `calculadora_IVA.py` | Calculadora de IVA |
+| `Graficos_Gestion.pyw` | Genera gráficos para presentar la Cuenta de gestión del centro a partir de un excel, con una tabla con la evolución del saldo, otra con los ingresos desglosados y una tercera con los gastos |
+| `calculadora_IVA.py` | Calculadora de base imponible  para tickets de compra en los que no se indica |
 
 ---
 
@@ -149,8 +148,7 @@ python menu.pyw
 ```
 Mis_Scripts/
 ├── menu.pyw                  ← Punto de entrada principal
-├── games.pyw                 ← Menú de juegos
-├── fonts/                    ← Fuentes usadas por los scripts
+├├── fonts/                   ← Fuentes usadas por los scripts
 ├── gs/                       ← Recursos Ghostscript para PDFs
 ├── requirements.txt          ← Dependencias Python
 ├── *.pyw                     ← Scripts con interfaz gráfica
