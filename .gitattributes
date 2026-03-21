@@ -1,0 +1,3 @@
+# Ignorar la carpeta gs/ en las estadísticas de lenguaje
+gs/* linguist-vendored
+fonts/* linguist-vendored
