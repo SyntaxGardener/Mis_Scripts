@@ -607,7 +607,11 @@ class MenuFinalPerfecto:
 
     def toggle_carpeta(self, cat):
         self.estados_carpetas[cat] = not self.estados_carpetas[cat]
+        self.canvas.place(x=-9999, y=-9999)          # oculta sin destruir
         self.cargar_scripts()
+        self.root.update_idletasks()                  # fuerza el repintado
+        self.canvas.place_forget()                    # restaura el layout normal
+        self.canvas.pack(side="left", fill="both", expand=True)
 
     def filtrar_scripts(self, e):
         self.cargar_scripts()
