@@ -13,6 +13,27 @@ import time
 from pathlib import Path
 from datetime import datetime
 import configparser as _cp, pathlib as _pl
+import re
+
+try:
+    from docx import Document
+    from docx.shared import Pt, RGBColor, Inches, Cm
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    HAS_DOCX = True
+except ImportError:
+    HAS_DOCX = False
+
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                    HRFlowable, Table, TableStyle)
+    HAS_PDF = True
+except ImportError:
+    HAS_PDF = False
 
 # ── Modelos disponibles ───────────────────────────────────────────────────────
 
@@ -90,27 +111,33 @@ def obtener_texto(fuente: str) -> str:
     raise ValueError(f"Formato no soportado: '{ext}'. Usa PDF, DOCX o URL.")
 
 
-# ── Construcción del prompt ───────────────────────────────────────────────────
-# Estrategia: instrucciones al principio + recordatorio ANTES del texto
-# para que los modelos pequeños (Groq) no las pierdan de vista.
-
-def _recordatorio_resumen(idioma: str) -> str:
+def _inicio_resumen_groq(idioma: str) -> str:
     return (
-        f"ANTES DE ESCRIBIR, repasa estas reglas:\n"
-        f"• Por cada término, concepto, figura, recurso o regla que aparezca en el texto:\n"
-        f"  1. Escríbelo en negrita o en mayúsculas como encabezado.\n"
-        f"  2. Escribe su definición en 1-2 frases sencillas, como si se lo explicaras\n"
-        f"     a un alumno de secundaria que nunca lo ha oído.\n"
-        f"  3. Pon un ejemplo concreto y breve (una frase es suficiente).\n"
-        f"• PROHIBIDO escribir frases del tipo 'entre las figuras encontramos X, Y, Z'\n"
-        f"  sin explicar qué es cada una. Si nombras algo, defínelo en el acto.\n"
-        f"• Usa el formato exacto para cada entrada:\n"
-        f"    ▸ NOMBRE\n"
-        f"      Definición: ...\n"
-        f"      Ejemplo: ...\n"
-        f"• Agrupa las entradas por temas con encabezado: ══ TEMA: [título] ══\n"
-        f"• Idioma de toda la respuesta: {idioma}.\n"
-        f"\nAhora genera el glosario-esquema del siguiente texto:\n"
+        f"Eres un estudiante adulto de secundaria. Genera un RESUMEN del texto "
+        f"que te sirva para estudiar SIN necesitar el original. "
+        f"Responde en {idioma}.\n\n"
+        f"PROHIBIDO listar nombres sin definirlos ('las figuras son X, Y, Z' sin explicar cada una).\n"
+        f"Agrupa por bloques temáticos: ══ TEMA: [título] ══\n"
+        f"Al final: 3-5 PREGUNTAS DE REPASO sin respuesta."
+    )
+
+def _recordatorio_resumen_groq(idioma: str) -> str:
+    return (
+        f"ANTES DE ESCRIBIR comprueba: ¿están todos los términos definidos? "
+        f"Idioma: {idioma}.\n\nTexto:\n"
+    )
+
+def _inicio_resumen_capaz(idioma: str) -> str:
+    return (
+        f"Actúa como alumno adulto de secundaria y genera un resumen del texto "
+        f"para que puedas estudiar sin el original. Responde en {idioma}.\n\n"
+        f"Criterios:\n"
+        f"• Incluye todos los conceptos, términos técnicos y figuras con nombre propio del texto.\n"
+        f"• Define cada uno; nunca los menciones sin explicarlos.\n"
+        f"• El ejemplo es opcional: añádelo solo cuando concrete algo que la definición "
+        f"no deja claro por sí sola. No lo repitas mecánicamente en cada entrada.\n"
+        f"• Agrupa por temas. Al final, 3-5 preguntas de repaso sin respuesta.\n"
+        f"• Sin párrafos de relleno ni resumen del argumento."
     )
 
 def _recordatorio_examen(secciones_txt: str, tiene_lectora: bool, tiene_literaria: bool) -> str:
@@ -126,9 +153,21 @@ def _recordatorio_examen(secciones_txt: str, tiene_lectora: bool, tiene_literari
     partes.append("Ahora genera el examen basándote en el siguiente texto:\n")
     return "\n".join(partes)
 
-def construir_prompt(tipo: str, idioma: str, secciones_examen: dict = None) -> dict:
-    """Devuelve {"inicio": str, "recordatorio": str} para colocar el recordatorio
-    justo antes del texto y así reforzar las instrucciones en modelos pequeños."""
+def construir_prompt(tipo: str, idioma: str, secciones_examen: dict = None,
+                     proveedor: str = "Groq") -> dict:
+    """Devuelve {"inicio": str, "recordatorio": str}.
+    El prompt varía según el proveedor: Groq recibe instrucciones más directivas;
+    Gemini y Claude reciben un prompt más limpio sin recordatorio redundante."""
+
+    es_capaz = proveedor in ("Gemini", "Claude")
+
+    # ── Resumen (glosario-esquema) ────────────────────────────────────────────
+    if tipo == "Resumen":
+        if es_capaz:
+            return {"inicio": _inicio_resumen_capaz(idioma), "recordatorio": "Texto:\n"}
+        else:
+            return {"inicio": _inicio_resumen_groq(idioma),
+                    "recordatorio": _recordatorio_resumen_groq(idioma)}
 
     instrucciones = {
         "Contenido": (
@@ -136,49 +175,19 @@ def construir_prompt(tipo: str, idioma: str, secciones_examen: dict = None) -> d
             "Desarrolla cada idea principal en un párrafo propio con explicación suficiente. "
             "No hagas un resumen telegráfico: cada punto debe quedar bien explicado.",
             f"RECUERDA: respuesta en {idioma}, resumen detallado con cada idea bien desarrollada.\nTexto a resumir:\n"
+            if not es_capaz else "Texto a resumir:\n"
         ),
         "Esquema": (
             f"Genera un esquema estructurado con jerarquía de puntos (usa ►, •, -) "
             f"del siguiente texto en {idioma}. Incluye título, todas las secciones y sus puntos clave.",
             f"RECUERDA: esquema completo en {idioma}, sin omitir secciones.\nTexto:\n"
+            if not es_capaz else "Texto:\n"
         ),
         "Puntos clave": (
             f"Extrae los puntos clave más importantes del siguiente texto en {idioma}. "
             "Presenta cada punto con una viñeta (•) y desarróllalo en 2-3 frases, no en una sola palabra.",
             f"RECUERDA: cada punto clave desarrollado en 2-3 frases, en {idioma}.\nTexto:\n"
-        ),
-        "Resumen": (
-            f"Eres un profesor de {idioma} de secundaria. "
-            f"Tu tarea es generar un GLOSARIO-ESQUEMA del siguiente texto "
-            f"que sirva a los alumnos para estudiar SIN necesitar el original.\n"
-            "\n"
-            "REGLA ÚNICA E IRROMPIBLE:\n"
-            "Cada término, concepto, figura literaria, recurso, regla gramatical "
-            "o cualquier elemento con nombre propio que aparezca en el texto "
-            "DEBE aparecer en tu respuesta con este formato EXACTO:\n"
-            "  ▸ NOMBRE (en mayúsculas)\n"
-            "    Definición: una o dos frases claras y sencillas.\n"
-            "    Ejemplo: una frase corta que ilustre el concepto.\n"
-            "\n"
-            "NUNCA escribas frases como 'las figuras son: metáfora, hipérbole...'\n"
-            "sin definir cada una. Nombrar sin definir está PROHIBIDO.\n"
-            "\n"
-            "ESTRUCTURA de la respuesta:\n"
-            "  ══ TEMA: [título del tema] ══\n"
-            "  (una o dos frases de introducción muy breve)\n"
-            "  ▸ CONCEPTO 1\n"
-            "    Definición: ...\n"
-            "    Ejemplo: ...\n"
-            "  ▸ CONCEPTO 2\n"
-            "    Definición: ...\n"
-            "    Ejemplo: ...\n"
-            "  (repite para todos los conceptos del tema)\n"
-            "\n"
-            "Repite el bloque ══ TEMA ══ para cada tema o unidad del texto.\n"
-            "Al final, escribe 3-5 PREGUNTAS DE REPASO sin respuesta.\n"
-            "No escribas párrafos de relleno ni resumas el argumento: "
-            "solo el glosario-esquema con el formato indicado.",
-            None  # el recordatorio se construye dinámicamente
+            if not es_capaz else "Texto:\n"
         ),
         "Cuestionario": (
             f"Genera un cuestionario de 10 preguntas con 4 opciones de respuesta (A, B, C, D) "
@@ -187,14 +196,10 @@ def construir_prompt(tipo: str, idioma: str, secciones_examen: dict = None) -> d
             "y al final de cada pregunta indica entre paréntesis cuál es la respuesta correcta. "
             "Las preguntas deben cubrir los conceptos más importantes.",
             f"RECUERDA: 10 preguntas, 4 opciones cada una, respuesta correcta entre paréntesis, en {idioma}.\nTexto:\n"
+            if not es_capaz else "Texto:\n"
         ),
-        "Examen": (None, None),  # se construye abajo
+        "Examen": (None, None),
     }
-
-    if tipo == "Resumen":
-        inicio = instrucciones["Resumen"][0]
-        recordatorio = _recordatorio_resumen(idioma)
-        return {"inicio": inicio, "recordatorio": recordatorio}
 
     if tipo == "Examen" and secciones_examen:
         secs = []
@@ -393,6 +398,7 @@ def llamar_claude(prompt: str, api_key: str, log_fn=None) -> tuple:
 
 CHUNK_GEMINI = 15_000
 CHUNK_GROQ   = 20_000
+CHUNK_CLAUDE = 140_000   # ~200k tokens de contexto; prácticamente no fragmenta
 SOLAPAMIENTO = 500
 
 
@@ -428,18 +434,18 @@ def _armar_prompt(partes: dict, texto: str) -> str:
 
 def resumir(texto: str, api_key: str, proveedor: str, tipo: str, idioma: str,
             secciones_examen: dict = None, log_fn=None) -> tuple:
-    """Devuelve (resultado, modelo_usado). Delega en Gemini o Groq según proveedor."""
+    """Devuelve (resultado, modelo_usado). Delega en Gemini, Groq o Claude según proveedor."""
 
     if proveedor == "Gemini":
         _llamar = llamar_gemini
         chunk   = CHUNK_GEMINI
     elif proveedor == "Claude":
         _llamar = llamar_claude
-        chunk   = CHUNK_GEMINI   # Claude tiene contexto grande, mismo chunk que Gemini
+        chunk   = CHUNK_CLAUDE   # ventana de 200k tokens — casi nunca fragmenta
     else:
         _llamar = llamar_groq
         chunk   = CHUNK_GROQ
-    partes_base = construir_prompt(tipo, idioma, secciones_examen)
+    partes_base = construir_prompt(tipo, idioma, secciones_examen, proveedor)
 
     # ── Documento corto ───────────────────────────────────────────────────────
     if len(texto) <= chunk:
@@ -475,14 +481,15 @@ def resumir(texto: str, api_key: str, proveedor: str, tipo: str, idioma: str,
         if i < total_frags:
             if log_fn:
                 log_fn("  Pausa entre fragmentos…")
-            time.sleep(8 if proveedor == "Groq" else 40)
+            time.sleep(8 if proveedor == "Groq" else 40 if proveedor == "Gemini" else 2)
 
     if log_fn:
         log_fn("  Generando síntesis final…")
 
     texto_parciales = "\n\n".join(resumenes_parciales)
 
-    # Prompts de síntesis: también con recordatorio al final
+    # Prompts de síntesis: diferenciados por proveedor
+    es_capaz = proveedor in ("Gemini", "Claude")
     prompts_sintesis = {
         "Contenido": {
             "inicio":
@@ -490,38 +497,33 @@ def resumir(texto: str, api_key: str, proveedor: str, tipo: str, idioma: str,
                 f"genera un RESUMEN FINAL completo y bien desarrollado en {idioma}. "
                 f"Cada idea debe estar suficientemente explicada, no en telegráfico.",
             "recordatorio":
-                f"RECUERDA: resumen detallado en {idioma}, cada idea desarrollada.\nResúmenes:\n",
+                f"RECUERDA: resumen detallado en {idioma}, cada idea desarrollada.\nResúmenes:\n"
+                if not es_capaz else "Resúmenes:\n",
         },
         "Esquema": {
             "inicio":
                 f"A partir de los siguientes resúmenes parciales, genera un ESQUEMA FINAL "
                 f"completo y estructurado en {idioma} (usa ►, •, -) con todas las secciones.",
             "recordatorio":
-                f"RECUERDA: esquema completo en {idioma}, sin omitir secciones.\nResúmenes:\n",
+                f"RECUERDA: esquema completo en {idioma}, sin omitir secciones.\nResúmenes:\n"
+                if not es_capaz else "Resúmenes:\n",
         },
         "Puntos clave": {
             "inicio":
                 f"A partir de los siguientes resúmenes parciales, extrae y consolida los "
                 f"PUNTOS CLAVE más importantes en {idioma}. Cada punto desarrollado en 2-3 frases.",
             "recordatorio":
-                f"RECUERDA: cada punto clave con 2-3 frases de desarrollo, en {idioma}.\nResúmenes:\n",
+                f"RECUERDA: cada punto clave con 2-3 frases de desarrollo, en {idioma}.\nResúmenes:\n"
+                if not es_capaz else "Resúmenes:\n",
         },
         "Resumen": {
             "inicio":
-                f"Eres un profesor de {idioma} de secundaria. "
-                f"A partir de los siguientes fragmentos resumidos, genera un GLOSARIO-ESQUEMA "
-                f"completo que sirva a los alumnos para estudiar SIN el original.\n\n"
-                f"REGLA ÚNICA: cada concepto, figura, recurso o término con nombre propio "
-                f"DEBE aparecer con este formato:\n"
-                f"  ▸ NOMBRE\n"
-                f"    Definición: frase clara y sencilla.\n"
-                f"    Ejemplo: frase corta.\n\n"
-                f"NUNCA listes nombres sin definirlos. "
-                f"Agrupa por temas con ══ TEMA: [título] ══. "
-                f"Al final, 3-5 PREGUNTAS DE REPASO sin respuesta.",
+                _inicio_resumen_capaz(idioma) if es_capaz else _inicio_resumen_groq(idioma),
             "recordatorio":
+                "Fragmentos resumidos:\n"
+                if es_capaz else
                 f"RECUERDA: formato ▸ NOMBRE / Definición / Ejemplo por cada concepto, "
-                f"agrupado por temas, en {idioma}.\nFragmentos:\n",
+                f"agrupado por temas, en {idioma}.\nFragmentos resumidos:\n",
         },
         "Cuestionario": {
             "inicio":
@@ -529,7 +531,8 @@ def resumir(texto: str, api_key: str, proveedor: str, tipo: str, idioma: str,
                 f"de 10 preguntas con 4 opciones (A, B, C, D) en {idioma}. "
                 f"Indica la respuesta correcta entre paréntesis al final de cada pregunta.",
             "recordatorio":
-                f"RECUERDA: 10 preguntas, 4 opciones, respuesta correcta entre paréntesis, en {idioma}.\nResúmenes:\n",
+                f"RECUERDA: 10 preguntas, 4 opciones, respuesta correcta entre paréntesis, en {idioma}.\nResúmenes:\n"
+                if not es_capaz else "Resúmenes:\n",
         },
         "Examen": partes_base,
     }
@@ -540,7 +543,356 @@ def resumir(texto: str, api_key: str, proveedor: str, tipo: str, idioma: str,
     return _verificar_resumen(resultado, api_key, proveedor, idioma, _llamar, log_fn) if tipo == "Resumen" else resultado, modelo_usado
 
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  FORMATEO TXT → DOCX / PDF  (integrado desde formateador.pyw)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_RE_BULLET_LIST = re.compile(
+    r'^(\s*)[\-\*]\s+([A-Za-z]\)|[IVXLC]+[\.)]|\d+[\.)])\s+(.*)'
+)
+
+def _clasificar_linea(linea):
+    raw = linea.rstrip('\n')
+    if raw.strip() == '':
+        return ('empty', '', 0)
+    if re.match(r'^[\-=]{3,}\s*$', raw.strip()):
+        return ('separator', '', 0)
+    m = re.match(r'^(#{1,})\s+(.*)', raw)
+    if m:
+        return ('heading', m.group(2).strip(), min(len(m.group(1)), 3))
+    m = re.match(r'^\[([A-ZÁÉÍÓÚÑ][^\]]+)\]\s*$', raw.strip())
+    if m:
+        return ('heading', m.group(1).strip(), 2)
+    s = raw.strip()
+    if s.startswith('==') and s.endswith('==') and len(s) > 6:
+        inner = s[2:-2].strip()
+        if inner.isupper() or re.match(r'^[A-ZÁÉÍÓÚÑ\s\d\:\-]+$', inner):
+            return ('heading', inner, 2)
+    m = _RE_BULLET_LIST.match(raw)
+    if m:
+        return ('numbered', f"{m.group(2)} {m.group(3).strip()}", len(m.group(1)) // 2)
+    bp = re.match(r'^(\s*)(▸|•|●|○|■|□|►|☆|✓|✗|❌|💡|⚠|–|—)\s+(.*)', raw)
+    if bp:
+        return ('bullet', bp.group(3).strip(), len(bp.group(1)) // 2)
+    m = re.match(r'^(\s*)[\-\*]\s+((?!\-\-).+)', raw)
+    if m:
+        return ('bullet', m.group(2).strip(), len(m.group(1)) // 2)
+    m = re.match(r'^(\s*)([A-Za-z]\)|\d+[\.)])\s+(.*)', raw)
+    if m:
+        return ('numbered', f"{m.group(2)} {m.group(3).strip()}", len(m.group(1)) // 2)
+    return ('normal', raw, 0)
+
+def _parsear_inline(texto):
+    segs, patron, pos = [], re.compile(r'==(.+?)==|\*\*(.+?)\*\*|\*(.+?)\*'), 0
+    for m in patron.finditer(texto):
+        if m.start() > pos:
+            segs.append((texto[pos:m.start()], False, False, False))
+        if   m.group(1): segs.append((m.group(1), False, False, True))
+        elif m.group(2): segs.append((m.group(2), True,  False, False))
+        elif m.group(3): segs.append((m.group(3), False, True,  False))
+        pos = m.end()
+    if pos < len(texto):
+        segs.append((texto[pos:], False, False, False))
+    return segs or [(texto, False, False, False)]
+
+def _hex_to_rgb(h):
+    h = h.lstrip('#')
+    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+def _es_linea_tabla(l):
+    return '|' in l.strip()
+
+def _es_separador_tabla(l):
+    s = l.strip().replace(' ', '')
+    return bool(re.match(r'^[\|\-\:]+$', s)) and '-' in s and len(s) > 2
+
+def _parsear_fila(l):
+    s = l.strip()
+    if s.startswith('|'): s = s[1:]
+    if s.endswith('|'):   s = s[:-1]
+    return [c.strip() for c in s.split('|')]
+
+def _limpiar_marcadores(texto):
+    texto = re.sub(r'==(.+?)==',      r'\1', texto)
+    texto = re.sub(r'\*\*(.+?)\*\*', r'\1', texto)
+    texto = re.sub(r'\*(.+?)\*',     r'\1', texto)
+    return texto
+
+def _calcular_anchos_columnas(filas, ancho_total, min_pct=0.10):
+    if not filas:
+        return []
+    ncols = max(len(f) for f in filas)
+    maxlen = [0] * ncols
+    for fila in filas:
+        for ci, celda in enumerate(fila):
+            l = len(_limpiar_marcadores(celda))
+            if l > maxlen[ci]:
+                maxlen[ci] = l
+    total = sum(maxlen) or 1
+    pcts = [max(min_pct, ml / total) for ml in maxlen]
+    suma = sum(pcts)
+    pcts = [p / suma for p in pcts]
+    return [ancho_total * p for p in pcts]
+
+def _agrupar_bloques(lineas):
+    bloques = []
+    i = 0
+    while i < len(lineas):
+        linea = lineas[i]
+        if _es_linea_tabla(linea) and not _es_separador_tabla(linea):
+            filas_raw = []
+            j = i
+            while j < len(lineas) and _es_linea_tabla(lineas[j]):
+                filas_raw.append(lineas[j])
+                j += 1
+            filas = [_parsear_fila(f) for f in filas_raw if not _es_separador_tabla(f)]
+            if filas:
+                bloques.append(('table', filas))
+            i = j
+        else:
+            bloques.append(_clasificar_linea(linea))
+            i += 1
+    return bloques
+
+COLORES_H_DEFECTO = {1: '#1F3864', 2: '#2E5A8E', 3: '#4472C4'}
+
+def fmt_generar_docx(texto_str, ruta_salida, fuente='Calibri',
+                     colores_h=None):
+    """Convierte una cadena de texto con marcadores a .docx."""
+    if not HAS_DOCX:
+        raise ImportError("Instala python-docx: pip install python-docx")
+    if colores_h is None:
+        colores_h = COLORES_H_DEFECTO
+    lineas = texto_str.splitlines(keepends=True)
+
+    doc = Document()
+    doc.styles['Normal'].font.name = fuente
+    doc.styles['Normal'].font.size = Pt(11)
+    for sec in doc.sections:
+        sec.top_margin = sec.bottom_margin = Cm(2.5)
+        sec.left_margin  = Cm(3)
+        sec.right_margin = Cm(2.5)
+
+    CONTENT_DXA = int(15.5 / 2.54 * 1440)
+
+    def inline(p, texto, hdr=False):
+        for (t, bold, italic, hl) in _parsear_inline(texto):
+            r = p.add_run(t)
+            r.bold      = bold or hdr
+            r.italic    = italic
+            r.font.name = fuente
+            if hl:
+                rPr = r._r.get_or_add_rPr()
+                elem = OxmlElement('w:highlight')
+                elem.set(qn('w:val'), 'yellow')
+                rPr.append(elem)
+
+    def add_tabla(filas):
+        if not filas:
+            return
+        ncols  = max(len(f) for f in filas)
+        anchos = _calcular_anchos_columnas(filas, CONTENT_DXA)
+        while len(anchos) < ncols:
+            anchos.append(CONTENT_DXA / ncols)
+        tbl = doc.add_table(rows=len(filas), cols=ncols)
+        tbl.style = 'Table Grid'
+        for ri, fila in enumerate(filas):
+            hdr = (ri == 0)
+            for ci in range(ncols):
+                cell = tbl.cell(ri, ci)
+                tc   = cell._tc
+                tcPr = tc.get_or_add_tcPr()
+                tcW  = OxmlElement('w:tcW')
+                tcW.set(qn('w:w'),    str(int(anchos[ci])))
+                tcW.set(qn('w:type'), 'dxa')
+                tcPr.append(tcW)
+                texto = fila[ci] if ci < len(fila) else ''
+                if hdr:
+                    tcPr2 = tc.get_or_add_tcPr()
+                    shd   = OxmlElement('w:shd')
+                    shd.set(qn('w:val'),   'clear')
+                    shd.set(qn('w:color'), 'auto')
+                    shd.set(qn('w:fill'),  'D9E1F2')
+                    tcPr2.append(shd)
+                p = cell.paragraphs[0]
+                p.clear()
+                for (t, bold, italic, hl2) in _parsear_inline(texto):
+                    r = p.add_run(t)
+                    r.bold      = bold or hdr
+                    r.italic    = italic
+                    r.font.name = fuente
+                    r.font.size = Pt(10)
+                    if hl2:
+                        rPr = r._r.get_or_add_rPr()
+                        elem = OxmlElement('w:highlight')
+                        elem.set(qn('w:val'), 'yellow')
+                        rPr.append(elem)
+        doc.add_paragraph()
+
+    for b in _agrupar_bloques(lineas):
+        tipo = b[0]
+        if tipo == 'table':
+            add_tabla(b[1])
+        elif tipo == 'empty':
+            continue
+        elif tipo == 'separator':
+            p   = doc.add_paragraph()
+            pPr = p._p.get_or_add_pPr()
+            pBdr = OxmlElement('w:pBdr')
+            bot  = OxmlElement('w:bottom')
+            bot.set(qn('w:val'),   'single')
+            bot.set(qn('w:sz'),    '6')
+            bot.set(qn('w:space'), '1')
+            bot.set(qn('w:color'), 'AAAAAA')
+            pBdr.append(bot)
+            pPr.append(pBdr)
+        elif tipo == 'heading':
+            _, contenido, nivel = b
+            nw  = min(nivel, 3)
+            p   = doc.add_heading(level=nw)
+            p.clear()
+            run = p.add_run(contenido)
+            run.bold      = True
+            run.font.name = fuente
+            run.font.size = Pt([0, 18, 14, 12][nw])
+            r2, g2, b2    = _hex_to_rgb(colores_h.get(nw, '#1F3864'))
+            run.font.color.rgb = RGBColor(r2, g2, b2)
+            p.paragraph_format.space_before = Pt(12 if nivel == 1 else 8)
+            p.paragraph_format.space_after  = Pt(4)
+        elif tipo == 'bullet':
+            _, contenido, nivel = b
+            p = doc.add_paragraph(style='List Bullet')
+            p.paragraph_format.left_indent = Inches(0.25 * (nivel + 1))
+            inline(p, contenido)
+        elif tipo == 'numbered':
+            _, contenido, nivel = b
+            p = doc.add_paragraph()
+            p.paragraph_format.left_indent      = Inches(0.35 * (nivel + 1))
+            p.paragraph_format.first_line_indent = Inches(-0.25)
+            p.paragraph_format.space_after       = Pt(3)
+            inline(p, contenido)
+        else:
+            _, contenido, _ = b
+            p = doc.add_paragraph()
+            inline(p, contenido)
+            p.paragraph_format.space_after = Pt(4)
+
+    doc.save(ruta_salida)
+
+
+def fmt_generar_pdf(texto_str, ruta_salida, fuente='Calibri',
+                    colores_h=None):
+    """Convierte una cadena de texto con marcadores a .pdf."""
+    if not HAS_PDF:
+        raise ImportError("Instala reportlab: pip install reportlab")
+    if colores_h is None:
+        colores_h = COLORES_H_DEFECTO
+    lineas = texto_str.splitlines(keepends=True)
+
+    mapa = {'Calibri':'Helvetica','Arial':'Helvetica','Times New Roman':'Times-Roman',
+            'Georgia':'Times-Roman','Garamond':'Times-Roman','Courier New':'Courier',
+            'Verdana':'Helvetica','Trebuchet MS':'Helvetica'}
+    fn = mapa.get(fuente, 'Helvetica')
+    fb = {'Helvetica':'Helvetica-Bold','Times-Roman':'Times-Bold',
+          'Courier':'Courier-Bold'}.get(fn, 'Helvetica-Bold')
+
+    def rl_col(hx):
+        r, g, b = _hex_to_rgb(hx)
+        return colors.Color(r/255, g/255, b/255)
+
+    def inline_html(texto):
+        texto = texto.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        texto = re.sub(r'==(.+?)==',      r'<font backColor="#FFFF00"><b>\1</b></font>', texto)
+        texto = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', texto)
+        texto = re.sub(r'\*(.+?)\*',     r'<i>\1</i>', texto)
+        return texto
+
+    PAGE_W = A4[0] - 3*cm - 2.5*cm
+    doc_pdf = SimpleDocTemplate(str(ruta_salida), pagesize=A4,
+                                topMargin=2.5*cm, bottomMargin=2.5*cm,
+                                leftMargin=3*cm,  rightMargin=2.5*cm)
+
+    nst = ParagraphStyle('N',  fontName=fn, fontSize=10.5, leading=15, spaceAfter=4)
+    hst = {
+        1: ParagraphStyle('H1', fontName=fb, fontSize=18, spaceAfter=8,
+                           spaceBefore=14, textColor=rl_col(colores_h.get(1,'#1F3864'))),
+        2: ParagraphStyle('H2', fontName=fb, fontSize=14, spaceAfter=6,
+                           spaceBefore=10, textColor=rl_col(colores_h.get(2,'#2E5A8E'))),
+        3: ParagraphStyle('H3', fontName=fb, fontSize=12, spaceAfter=4,
+                           spaceBefore=8,  textColor=rl_col(colores_h.get(3,'#4472C4'))),
+    }
+    bst = ParagraphStyle('B',  parent=nst, leftIndent=18, spaceAfter=3)
+    lst = ParagraphStyle('L',  parent=nst, leftIndent=28, firstLineIndent=-18, spaceAfter=3)
+    cn  = ParagraphStyle('TC', fontName=fn, fontSize=9, leading=12)
+    ch  = ParagraphStyle('TH', fontName=fb, fontSize=9, leading=12)
+
+    def hacer_tabla(filas):
+        if not filas:
+            return None
+        ncols  = max(len(f) for f in filas)
+        anchos = _calcular_anchos_columnas(filas, PAGE_W)
+        while len(anchos) < ncols:
+            anchos.append(PAGE_W / ncols)
+        data = []
+        for ri, fila in enumerate(filas):
+            row = []
+            for ci in range(ncols):
+                txt = fila[ci] if ci < len(fila) else ''
+                st  = ch if ri == 0 else cn
+                row.append(Paragraph(inline_html(txt), st))
+            data.append(row)
+        t = Table(data, colWidths=anchos, repeatRows=1)
+        t.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,0),  colors.HexColor('#D9E1F2')),
+            ('TEXTCOLOR',     (0,0), (-1,0),  colors.HexColor('#1F3864')),
+            ('GRID',          (0,0), (-1,-1), 0.5, colors.HexColor('#AAAAAA')),
+            ('LINEBELOW',     (0,0), (-1,0),  1.0, colors.HexColor('#2E5A8E')),
+            ('TOPPADDING',    (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('LEFTPADDING',   (0,0), (-1,-1), 6),
+            ('RIGHTPADDING',  (0,0), (-1,-1), 6),
+            ('ROWBACKGROUNDS',(0,1), (-1,-1), [colors.white, colors.HexColor('#F5F8FF')]),
+            ('VALIGN',        (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        return t
+
+    story = []
+    for b in _agrupar_bloques(lineas):
+        tipo = b[0]
+        if tipo == 'table':
+            t = hacer_tabla(b[1])
+            if t:
+                story.append(Spacer(1, 6))
+                story.append(t)
+                story.append(Spacer(1, 10))
+        elif tipo == 'empty':
+            story.append(Spacer(1, 4))
+        elif tipo == 'separator':
+            story += [Spacer(1,4),
+                      HRFlowable(width='100%', thickness=0.5,
+                                 color=colors.HexColor('#AAAAAA')),
+                      Spacer(1,4)]
+        elif tipo == 'heading':
+            _, contenido, nivel = b
+            story.append(Paragraph(inline_html(contenido), hst[min(nivel,3)]))
+        elif tipo == 'bullet':
+            _, contenido, nivel = b
+            st = ParagraphStyle(f'bl{nivel}', parent=bst, leftIndent=18+12*nivel)
+            story.append(Paragraph(f'• {inline_html(contenido)}', st))
+        elif tipo == 'numbered':
+            _, contenido, nivel = b
+            st = ParagraphStyle(f'ls{nivel}', parent=lst, leftIndent=28+12*nivel)
+            story.append(Paragraph(inline_html(contenido), st))
+        else:
+            _, contenido, _ = b
+            story.append(Paragraph(inline_html(contenido), nst))
+
+    doc_pdf.build(story)
+
+
 # ── Colores ───────────────────────────────────────────────────────────────────
+
 
 BG       = "#f4f4f8"
 PANEL    = "#e8e8f0"
@@ -586,11 +938,15 @@ class ResumidorApp(tk.Tk):
                 pass
 
     def _guardar_config(self):
-        self.cfg["carpeta_sal"] = self.var_carpeta.get().strip()
-        self.cfg["tipo"]        = self.var_tipo.get()
-        self.cfg["idioma"]      = self.var_idioma.get()
-        self.cfg["proveedor"]   = self.var_proveedor.get()
-        self.cfg["modelo"]      = self.var_modelo.get()
+        self.cfg["carpeta_sal"]  = self.var_carpeta.get().strip()
+        self.cfg["tipo"]         = self.var_tipo.get()
+        self.cfg["idioma"]       = self.var_idioma.get()
+        self.cfg["proveedor"]    = self.var_proveedor.get()
+        self.cfg["modelo"]       = self.var_modelo.get()
+        self.cfg["fmt_txt"]      = self.var_fmt_txt.get()
+        self.cfg["fmt_docx"]     = self.var_fmt_docx.get()
+        self.cfg["fmt_pdf"]      = self.var_fmt_pdf.get()
+        self.cfg["fmt_fuente"]   = self.var_fmt_fuente.get()
         try:
             CONFIG_FILE.write_text(json.dumps(self.cfg, indent=2))
         except Exception:
@@ -736,6 +1092,47 @@ class ResumidorApp(tk.Tk):
                   font=F_LABEL, bg=PANEL, fg=ACENTO2,
                   relief="flat", cursor="hand2", pady=6,
                   command=self._abrir_carpeta).pack(fill="x", pady=(4, 10))
+
+        # ── Formato de salida ─────────────────────────────────────────────────
+        self._lbl(izq, "💾  Formato de salida")
+        self.var_fmt_txt  = tk.BooleanVar(value=self.cfg.get("fmt_txt",  True))
+        self.var_fmt_docx = tk.BooleanVar(value=self.cfg.get("fmt_docx", False))
+        self.var_fmt_pdf  = tk.BooleanVar(value=self.cfg.get("fmt_pdf",  False))
+
+        fr_fmt = tk.Frame(izq, bg=BG)
+        fr_fmt.pack(fill="x", pady=(0, 4))
+        tk.Checkbutton(fr_fmt, text="TXT", variable=self.var_fmt_txt,
+                       font=F_NORM, bg=BG, fg=TEXTO,
+                       activebackground=BG, selectcolor=PANEL,
+                       relief="flat").pack(side="left", padx=(0, 10))
+        self.cb_docx = tk.Checkbutton(fr_fmt, text="Word (.docx)",
+                       variable=self.var_fmt_docx,
+                       font=F_NORM, bg=BG, fg=TEXTO if HAS_DOCX else SUBTEXTO,
+                       activebackground=BG, selectcolor=PANEL,
+                       relief="flat",
+                       state="normal" if HAS_DOCX else "disabled")
+        self.cb_docx.pack(side="left", padx=(0, 10))
+        self.cb_pdf = tk.Checkbutton(fr_fmt, text="PDF",
+                      variable=self.var_fmt_pdf,
+                      font=F_NORM, bg=BG, fg=TEXTO if HAS_PDF else SUBTEXTO,
+                      activebackground=BG, selectcolor=PANEL,
+                      relief="flat",
+                      state="normal" if HAS_PDF else "disabled")
+        self.cb_pdf.pack(side="left")
+
+        if not HAS_DOCX:
+            self.var_fmt_docx.set(False)
+        if not HAS_PDF:
+            self.var_fmt_pdf.set(False)
+
+        FUENTES_FMT = ['Arial', 'Calibri', 'Courier New', 'Georgia',
+                       'Times New Roman', 'Verdana']
+        self._lbl(izq, "   Tipo de letra (DOCX/PDF)")
+        self.var_fmt_fuente = tk.StringVar(
+            value=self.cfg.get("fmt_fuente", "Calibri"))
+        ttk.Combobox(izq, textvariable=self.var_fmt_fuente,
+                     values=FUENTES_FMT, state="readonly",
+                     font=F_NORM).pack(fill="x", pady=(0, 10))
 
         # ── Columna derecha ───────────────────────────────────────────────────
         der = tk.Frame(paned, bg=BG, padx=8)
@@ -972,15 +1369,42 @@ class ResumidorApp(tk.Tk):
 
                 ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                 tipo_slug = tipo.lower().replace(" ", "_")
-                ruta_sal = carpeta_sal / f"{nombre}_{tipo_slug}_{ts}.txt"
-                ruta_sal.write_text(resultado, encoding="utf-8")
+                base_nombre = f"{nombre}_{tipo_slug}_{ts}"
+                archivos_guardados = []
 
+                # ── TXT ──────────────────────────────────────────────────────
+                if self.var_fmt_txt.get():
+                    ruta_sal = carpeta_sal / f"{base_nombre}.txt"
+                    ruta_sal.write_text(resultado, encoding="utf-8")
+                    archivos_guardados.append(str(ruta_sal))
+
+                # ── DOCX ─────────────────────────────────────────────────────
+                if self.var_fmt_docx.get() and HAS_DOCX:
+                    try:
+                        ruta_docx = carpeta_sal / f"{base_nombre}.docx"
+                        fmt_generar_docx(resultado, str(ruta_docx),
+                                         fuente=self.var_fmt_fuente.get())
+                        archivos_guardados.append(str(ruta_docx))
+                    except Exception as e_docx:
+                        archivos_guardados.append(f"[DOCX ERROR: {e_docx}]")
+
+                # ── PDF ──────────────────────────────────────────────────────
+                if self.var_fmt_pdf.get() and HAS_PDF:
+                    try:
+                        ruta_pdf = carpeta_sal / f"{base_nombre}.pdf"
+                        fmt_generar_pdf(resultado, str(ruta_pdf),
+                                        fuente=self.var_fmt_fuente.get())
+                        archivos_guardados.append(str(ruta_pdf))
+                    except Exception as e_pdf:
+                        archivos_guardados.append(f"[PDF ERROR: {e_pdf}]")
+
+                guardados_txt = "\n".join(f"  ✔ {a}" for a in archivos_guardados)
                 bloque = (f"{'═'*58}\n"
                           f"  {tipo.upper()}: {nombre}\n"
                           f"{'─'*58}\n"
                           f"{resultado}\n"
                           f"  🤖 Modelo: {modelo_usado}\n"
-                          f"  ✔ Guardado: {ruta_sal}\n")
+                          f"{guardados_txt}\n")
                 self._agregar_resultado(bloque, "ok")
 
             except Exception as e:

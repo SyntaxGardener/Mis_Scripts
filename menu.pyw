@@ -586,13 +586,13 @@ class MenuFinalPerfecto:
             return "SISTEMA"
         if any(x in n for x in ["pdf", "informe", "word", "doc", "tabla", "format", "docx"]):
             return "PDF/DOCX"
-        if any(x in n for x in ["examenes", "apuntes", "resumen", "notas"]):
+        if any(x in n for x in ["examen", "apuntes", "resumen", "presentacion", "notas"]):
             return "CLASES"
         if any(x in n for x in ["video", "audio", "caratula", "youtube",
                                   "voz", "mezclador"]):
             return "AUDIO & VÍDEO"
         if any(x in n for x in ["horario", "diligencia", "gestion",
-                                  "certificados", "calculador", "diplomas"]):
+                                  "certificado", "calculador", "diploma"]):
             return "ADMINISTRACIÓN"
         if any(x in n for x in ["bingo", "crono", "game", "pasapalabra",
                                   "picker", "clase", "qr", "juego"]):

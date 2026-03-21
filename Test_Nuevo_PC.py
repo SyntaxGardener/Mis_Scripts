@@ -71,6 +71,8 @@ def check_and_update():
         ("google.genai", "google-genai", "Gemini API", False),
         ("anthropic", "anthropic", "Claude API", False),
         ("groq", "groq", "Groq API", False),
+        ("requests",  "requests",  "Peticiones HTTP",   True),
+        ("pptx",  "python-pptx",  "Crear presentaciones", False),
         ("pikepdf", "pikepdf", "Edición y Cifrado PDF", False),
         ("pygame", "pygame", "Reproducción Audio", False)        
     ]
