@@ -148,8 +148,7 @@ python menu.pyw
 ```
 Mis_Scripts/
 ├── menu.pyw                  ← Punto de entrada principal
-├├── fonts/                   ← Fuentes usadas por los scripts
-├── gs/                       ← Recursos Ghostscript para PDFs
+├── fonts/                   ← Fuentes usadas por los scripts
 ├── requirements.txt          ← Dependencias Python
 ├── *.pyw                     ← Scripts con interfaz gráfica
 └── *.py                      ← Scripts de consola / utilidades
