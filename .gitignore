@@ -38,5 +38,7 @@ error_log.txt
 # API keys y configuración local — NO subir al repositorio
 config.ini
 
-# Carpeta de resúmenes generados
+# Carpeta de resúmenes generados y de ghostscript
 Resumenes/
+gs/
+
