@@ -6,7 +6,6 @@ import importlib
 import subprocess
 import logging
 import json
-import configparser
 
 # --- CONFIGURACIÓN DE SILENCIO ---
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -21,9 +20,8 @@ AMARILLO= '\033[93m'
 RESET   = '\033[0m'
 BOLD    = '\033[1m'
 
-SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
-EXTRAS_FILE  = os.path.join(SCRIPT_DIR, "librerias_extra.json")
-CONFIG_FILE  = os.path.join(SCRIPT_DIR, "config.ini")
+SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
+EXTRAS_FILE = os.path.join(SCRIPT_DIR, "librerias_extra.json")
 
 LIBRERIAS_BASE = [
     ("edge_tts",          "edge-tts",          "Voz Microsoft",            True),
@@ -70,63 +68,6 @@ def setup_console():
         os.system('color')
         os.system('chcp 65001 > nul')
 
-# ── API Key ──────────────────────────────────────────────────────────────────
-
-def get_api_key():
-    config = configparser.ConfigParser()
-    config.read(CONFIG_FILE, encoding='utf-8')
-    try:
-        return config['anthropic']['api_key']
-    except KeyError:
-        print(f"{ROJO}No se encontró [anthropic] api_key en config.ini{RESET}")
-        return None
-
-# ── Consulta a Claude ────────────────────────────────────────────────────────
-
-def consultar_claude(nombre_import):
-    """Pregunta a Claude cuál es el nombre pip y una descripción corta."""
-    api_key = get_api_key()
-    if not api_key:
-        return None, None
-
-    try:
-        import urllib.request
-        import urllib.error
-
-        prompt = (
-            f"La librería de Python se importa como: import {nombre_import}\n"
-            f"Responde ÚNICAMENTE con este formato JSON, sin explicaciones ni texto extra:\n"
-            f'{{"pip": "nombre-en-pip", "desc": "descripción corta max 28 caracteres"}}'
-        )
-
-        datos = json.dumps({
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 100,
-            "messages": [{"role": "user", "content": prompt}]
-        }).encode("utf-8")
-
-        req = urllib.request.Request(
-            "https://api.anthropic.com/v1/messages",
-            data=datos,
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01"
-            }
-        )
-
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            respuesta = json.loads(resp.read().decode("utf-8"))
-            texto = respuesta["content"][0]["text"].strip()
-            # Limpiar posibles bloques ```json
-            texto = texto.replace("```json", "").replace("```", "").strip()
-            datos_lib = json.loads(texto)
-            return datos_lib.get("pip", ""), datos_lib.get("desc", "")
-
-    except Exception as e:
-        print(f"{ROJO}Error consultando Claude: {e}{RESET}")
-        return None, None
-
 # ── Gestión de extras ────────────────────────────────────────────────────────
 
 def cargar_extras():
@@ -161,35 +102,22 @@ def gestionar_librerias(extras):
 
         elif opcion == '1':
             print(f"\n{AMARILLO}-- AÑADIR NUEVA LIBRERÍA --{RESET}")
-            imp = input("Nombre de import (ej: sklearn): ").strip()
-            if not imp:
-                print(f"{ROJO}El nombre de import es obligatorio.{RESET}")
+            print(f"{AZUL}Ejemplo: import sklearn  →  pip: scikit-learn{RESET}\n")
+
+            imp  = input("Nombre de import (ej: sklearn)   : ").strip()
+            pip  = input("Nombre pip       (ej: scikit-learn): ").strip()
+            desc = input("Descripción      (ej: Machine Learning): ").strip()
+            crit = input("¿Es crítica?     (s/n): ").strip().lower() == 's'
+
+            if not imp or not pip:
+                print(f"{ROJO}El nombre de import y pip son obligatorios.{RESET}")
                 continue
 
-            # Comprobar duplicados
             todos = LIBRERIAS_BASE + extras
-            if any(lib[0] == imp for lib in todos):
+            if any(lib[0] == imp or lib[1] == pip for lib in todos):
                 print(f"{AMARILLO}Esa librería ya existe en la lista.{RESET}")
                 continue
 
-            print(f"{AMARILLO}Consultando a Claude...{RESET}", end=" ", flush=True)
-            pip, desc = consultar_claude(imp)
-
-            if pip:
-                print(f"{VERDE}OK{RESET}")
-                print(f"\n  Import : {BOLD}{imp}{RESET}")
-                print(f"  Pip    : {BOLD}{pip}{RESET}")
-                print(f"  Desc   : {BOLD}{desc}{RESET}")
-            else:
-                print(f"{ROJO}No se pudo obtener info automáticamente.{RESET}")
-                pip  = input("Nombre pip (manual): ").strip()
-                desc = input("Descripción (manual): ").strip()
-
-            if not pip:
-                print(f"{ROJO}Operación cancelada.{RESET}")
-                continue
-
-            crit = input("\n¿Es crítica? (s/n): ").strip().lower() == 's'
             extras.append((imp, pip, desc or pip, crit))
             guardar_extras(extras)
             print(f"\n{VERDE}'{pip}' añadida correctamente.{RESET}")
@@ -267,26 +195,11 @@ def limpiar_corrupts():
 
 def generar_requirements(instaladas_info):
     print(f"\n{AZUL}{'='*75}{RESET}")
-    if input("¿Generar requirements.txt con versiones instaladas? (s/n): ").lower() != 's':
+    if input("¿Generar requirements.txt? (s/n): ").lower() != 's':
         print(f"{AZUL}Omitiendo requirements.txt.{RESET}")
         return
 
-    print(f"\n{AMARILLO}Generando requirements.txt...{RESET}")
-    resultado = subprocess.run(
-        [sys.executable, "-m", "pip", "list", "--format=freeze"],
-        capture_output=True, text=True
-    )
-    versiones = {}
-    for linea in resultado.stdout.splitlines():
-        if "==" in linea:
-            nombre = linea.split("==")[0].strip().lower()
-            versiones[nombre] = linea.strip()
-
-    lineas = []
-    for pip_name, _ in instaladas_info:
-        nombre_base = pip_name.split('[')[0]
-        entrada = versiones.get(nombre_base.lower())
-        lineas.append(entrada if entrada else nombre_base)
+    lineas = [pip_name.split('[')[0] for pip_name, _ in instaladas_info]
 
     ruta = os.path.join(SCRIPT_DIR, "requirements.txt")
     with open(ruta, "w", encoding="utf-8") as f:
