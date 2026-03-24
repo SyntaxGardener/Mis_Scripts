@@ -30,12 +30,16 @@ def encontrar_nombre(lineas):
             return limpiar_nombre(linea.split('DE LA ALUMNA:')[-1])
     return None
 
-# Regex para extraer ámbito, nombre de módulo y nota de una línea de resultados.
-# Formato típico: "ACT Entornos digitales SB 1 2024/2025"
-# \b garantiza que NT no coincida dentro de "Entornos", ni IN dentro de "Inecuaciones", etc.
+# Regex principal: captura ámbito y nombre de módulo.
+# Formato de línea: "ACT Materia y fuerza IN SU 1 2024/2025"
+#   - puede haber UNA nota (solo ordinaria) o DOS (ordinaria + extraordinaria)
+#   - tomamos TODAS las notas de la línea y nos quedamos con el valor más alto
+# \b evita que NT coincida dentro de 'Entornos' o IN dentro de 'Inecuaciones'.
 PATRON_LINEA = re.compile(
-    r'^(ACT|AC|AS)\s+(.+?)\s+\b(SB|NT|BI|SU|IN|NP)\b'
+    r'^(ACT|AC|AS)\s+(.+?)\s+(?:\b(?:SB|NT|BI|SU|IN|NP)\b)'
 )
+# Busca todos los tokens de nota en cualquier parte de la línea
+PATRON_NOTAS = re.compile(r'\b(SB|NT|BI|SU|IN|NP)\b')
 
 def procesar_pdf(ruta_pdf, log_func):
     # Cada ámbito es ahora un dict {nombre_modulo: mejor_valor}
@@ -60,14 +64,18 @@ def procesar_pdf(ruta_pdf, log_func):
                 m = PATRON_LINEA.match(linea.strip())
                 if not m:
                     continue
-                ambito   = m.group(1)           # 'ACT', 'AC' o 'AS'
-                modulo   = m.group(2).strip()   # nombre del módulo
-                nota_raw = m.group(3)           # 'SB', 'NT', etc.
-                valor    = CONVERSION[nota_raw]
-                # Si el módulo ya tiene nota, conservar la más alta
+                ambito = m.group(1)          # 'ACT', 'AC' o 'AS'
+                modulo = m.group(2).strip()  # nombre del módulo
+                # Extraer TODAS las notas de la línea (ordinaria y/o extraordinaria)
+                # y quedarse con el valor más alto
+                notas_linea = PATRON_NOTAS.findall(linea)
+                if not notas_linea:
+                    continue
+                mejor_valor = max(CONVERSION[n] for n in notas_linea)
+                # Actualizar solo si mejora la nota ya registrada para ese módulo
                 prev = alumnos[nombre][ambito].get(modulo)
-                if prev is None or valor > prev:
-                    alumnos[nombre][ambito][modulo] = valor
+                if prev is None or mejor_valor > prev:
+                    alumnos[nombre][ambito][modulo] = mejor_valor
     return alumnos
 
 
