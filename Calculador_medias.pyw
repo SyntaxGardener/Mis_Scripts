@@ -30,29 +30,44 @@ def encontrar_nombre(lineas):
             return limpiar_nombre(linea.split('DE LA ALUMNA:')[-1])
     return None
 
+# Regex para extraer ámbito, nombre de módulo y nota de una línea de resultados.
+# Formato típico: "ACT Entornos digitales SB 1 2024/2025"
+# \b garantiza que NT no coincida dentro de "Entornos", ni IN dentro de "Inecuaciones", etc.
+PATRON_LINEA = re.compile(
+    r'^(ACT|AC|AS)\s+(.+?)\s+\b(SB|NT|BI|SU|IN|NP)\b'
+)
+
 def procesar_pdf(ruta_pdf, log_func):
+    # Cada ámbito es ahora un dict {nombre_modulo: mejor_valor}
+    # para poder aplicar la regla "si hay dos notas, cuenta la más alta".
     alumnos = {}
     with pdfplumber.open(ruta_pdf) as pdf:
         for num_pagina, pagina in enumerate(pdf.pages, 1):
             texto = pagina.extract_text()
-            if not texto: continue
+            if not texto:
+                continue
             lineas = texto.split('\n')
             nombre = encontrar_nombre(lineas)
-            if not nombre: continue
+            if not nombre:
+                continue
             if nombre not in alumnos:
-                alumnos[nombre] = {'ACT': [], 'AC': [], 'AS': []}
+                alumnos[nombre] = {'ACT': {}, 'AC': {}, 'AS': {}}
                 log_func(f"  📍 Página {num_pagina}: {nombre}")
             for linea in lineas:
-                for anio in ANIOS_VALIDOS:
-                    if anio in linea:
-                        for ambito in ['ACT', 'AC', 'AS']:
-                            if ambito in linea:
-                                for nota_raw, valor in CONVERSION.items():
-                                    if nota_raw in linea:
-                                        alumnos[nombre][ambito].append(valor)
-                                        break
-                                break
-                        break
+                # Filtro rápido: la línea debe contener un año válido
+                if not any(anio in linea for anio in ANIOS_VALIDOS):
+                    continue
+                m = PATRON_LINEA.match(linea.strip())
+                if not m:
+                    continue
+                ambito   = m.group(1)           # 'ACT', 'AC' o 'AS'
+                modulo   = m.group(2).strip()   # nombre del módulo
+                nota_raw = m.group(3)           # 'SB', 'NT', etc.
+                valor    = CONVERSION[nota_raw]
+                # Si el módulo ya tiene nota, conservar la más alta
+                prev = alumnos[nombre][ambito].get(modulo)
+                if prev is None or valor > prev:
+                    alumnos[nombre][ambito][modulo] = valor
     return alumnos
 
 
@@ -291,10 +306,14 @@ class AppCalculadora:
                 nuevos = procesar_pdf(ruta_pdf, self.log)
                 for nombre, datos in nuevos.items():
                     if nombre not in alumnos_total:
-                        alumnos_total[nombre] = {'ACT': [], 'AC': [], 'AS': []}
-                    alumnos_total[nombre]['ACT'].extend(datos['ACT'])
-                    alumnos_total[nombre]['AC'].extend(datos['AC'])
-                    alumnos_total[nombre]['AS'].extend(datos['AS'])
+                        alumnos_total[nombre] = {'ACT': {}, 'AC': {}, 'AS': {}}
+                    # Fusionar dicts: si el mismo módulo aparece en dos PDFs,
+                    # conservar el valor más alto.
+                    for ambito in ['ACT', 'AC', 'AS']:
+                        for modulo, valor in datos[ambito].items():
+                            prev = alumnos_total[nombre][ambito].get(modulo)
+                            if prev is None or valor > prev:
+                                alumnos_total[nombre][ambito][modulo] = valor
             except Exception as e:
                 self.log(f"  ❌ Error: {e}")
 
@@ -309,24 +328,39 @@ class AppCalculadora:
 
         for nombre, datos in alumnos_total.items():
             self.log(f"\n👤 Alumno/a: {nombre}")
-            m_act = sum(datos['ACT']) / len(datos['ACT']) if datos['ACT'] else None
-            m_ac  = sum(datos['AC'])  / len(datos['AC'])  if datos['AC']  else None
-            m_as  = sum(datos['AS'])  / len(datos['AS'])  if datos['AS']  else None
+            vals_act = list(datos['ACT'].values())
+            vals_ac  = list(datos['AC'].values())
+            vals_as  = list(datos['AS'].values())
+            m_act = sum(vals_act) / len(vals_act) if vals_act else None
+            m_ac  = sum(vals_ac)  / len(vals_ac)  if vals_ac  else None
+            m_as  = sum(vals_as)  / len(vals_as)  if vals_as  else None
 
-            if m_act: self.log(f"  ACT: {datos['ACT']} → Media: {m_act:.2f}")
-            if m_ac:  self.log(f"  AC:  {datos['AC']}  → Media: {m_ac:.2f}")
-            if m_as:  self.log(f"  AS:  {datos['AS']}  → Media: {m_as:.2f}")
+            if m_act is not None:
+                detalle = ", ".join(
+                    f"{mod}: {v}" for mod, v in datos['ACT'].items()
+                )
+                self.log(f"  ACT ({len(vals_act)} módulos): {detalle} → Media: {m_act:.2f}")
+            if m_ac is not None:
+                detalle = ", ".join(
+                    f"{mod}: {v}" for mod, v in datos['AC'].items()
+                )
+                self.log(f"  AC  ({len(vals_ac)} módulos): {detalle} → Media: {m_ac:.2f}")
+            if m_as is not None:
+                detalle = ", ".join(
+                    f"{mod}: {v}" for mod, v in datos['AS'].items()
+                )
+                self.log(f"  AS  ({len(vals_as)} módulos): {detalle} → Media: {m_as:.2f}")
 
-            validas  = [m for m in [m_act, m_ac, m_as] if m]
+            validas  = [m for m in [m_act, m_ac, m_as] if m is not None]
             m_global = sum(validas) / len(validas) if validas else None
-            if m_global: self.log(f"  ▶ MEDIA GLOBAL: {m_global:.2f}")
+            if m_global is not None: self.log(f"  ▶ MEDIA GLOBAL: {m_global:.2f}")
 
             resultados.append({
                 'Nombre':       nombre,
-                'Media ACT':    round(m_act,    2) if m_act    else "N/A",
-                'Media AC':     round(m_ac,     2) if m_ac     else "N/A",
-                'Media AS':     round(m_as,     2) if m_as     else "N/A",
-                'Media Global': round(m_global, 2) if m_global else "N/A"
+                'Media ACT':    round(m_act,    2) if m_act    is not None else "N/A",
+                'Media AC':     round(m_ac,     2) if m_ac     is not None else "N/A",
+                'Media AS':     round(m_as,     2) if m_as     is not None else "N/A",
+                'Media Global': round(m_global, 2) if m_global is not None else "N/A"
             })
 
         self.resultados_calculados = resultados

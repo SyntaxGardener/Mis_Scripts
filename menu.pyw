@@ -301,8 +301,9 @@ class MenuFinalPerfecto:
     def _asegurar_gitconfig(self, ruta):
         """Crea o completa el .gitconfig del USB con safe.directory=* y user básico."""
         lineas_requeridas = {
-            "[safe]": "	directory = *",
+            "[safe]":       "	directory = *",
             "[credential]": f"	helper = store --file {self.ruta_creds}",
+            "[user]":       "	name = SyntaxGardener\n\temail = toolbox@cepa.local",
         }
         contenido = ""
         if os.path.exists(ruta):
