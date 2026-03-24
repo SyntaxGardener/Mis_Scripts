@@ -12,7 +12,7 @@ import webbrowser
 #  CONFIGURACIÓN VISUAL
 # ─────────────────────────────────────────────
 ACENTO   = "#e8e8e8"   # color único para scripts normales
-ACENTO_FAV = "#ffd54f" # dorado solo para favoritos
+ACENTO_FAV = "#ffd54f" # dorado para favoritos
 
 COLORES = {
     "FAVORITOS":      "#ffd54f",   # dorado
@@ -301,9 +301,8 @@ class MenuFinalPerfecto:
     def _asegurar_gitconfig(self, ruta):
         """Crea o completa el .gitconfig del USB con safe.directory=* y user básico."""
         lineas_requeridas = {
-            "[safe]":       "	directory = *",
+            "[safe]": "	directory = *",
             "[credential]": f"	helper = store --file {self.ruta_creds}",
-            "[user]":       "	name = SyntaxGardener\n\temail = toolbox@cepa.local",
         }
         contenido = ""
         if os.path.exists(ruta):
@@ -329,12 +328,12 @@ class MenuFinalPerfecto:
 
     def _git_run(self, args, **kwargs):
         """Ejecuta git con el entorno correcto. Nunca lanza excepción."""
-        cmd = self.obtener_comando_git()
-        env = self._entorno_git()
-        kw = dict(creationflags=subprocess.CREATE_NO_WINDOW,
-                  env=env, capture_output=True, text=True, encoding="utf-8")
-        kw.update(kwargs)
         try:
+            cmd = self.obtener_comando_git()
+            env = self._entorno_git()          # ← ahora dentro del try
+            kw = dict(creationflags=subprocess.CREATE_NO_WINDOW,
+                      env=env, capture_output=True, text=True, encoding="utf-8")
+            kw.update(kwargs)
             return subprocess.run([cmd] + args, **kw)
         except Exception as e:
             class _R:
@@ -344,6 +343,14 @@ class MenuFinalPerfecto:
             return _R()
 
     def comprobar_git_status(self):
+        try:
+            self._comprobar_git_status_impl()
+        except Exception as e:
+            msg = str(e)[:70]
+            self.root.after(0, lambda m=msg: self.lbl_git.config(
+                text=f"\u2717  {m}", fg="#c0392b"))
+
+    def _comprobar_git_status_impl(self):
         # 1. safe.directory local (no necesita HOME escribible)
         self._git_run(["config", "--local", "safe.directory", self.base_dir],
                       cwd=self.base_dir)
