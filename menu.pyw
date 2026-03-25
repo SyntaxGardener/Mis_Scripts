@@ -63,7 +63,7 @@ def guardar_favoritos(favoritos):
             f.write(f"{fav}\n")
 
 def obtener_info_sistema():
-    v_python = f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    v_python = f"Py {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     ruta_base = os.path.dirname(os.path.abspath(__file__))
     unidad = os.path.splitdrive(ruta_base)[0]
     try:
