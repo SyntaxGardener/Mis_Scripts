@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # --- LÓGICA DE EXTRACCIÓN ---
-CONVERSION = {'SB': 9.5, 'NT': 8.5, 'BI': 6.5, 'SU': 5.5, 'IN': 4.0, 'NP': 0.0}
+CONVERSION = {'SB': 9.5, 'NT': 8, 'BI': 6.5, 'SU': 5.5, 'IN': 4.0, 'NP': 0.0}
 ANIOS_VALIDOS = [f"{anio}/{anio+1}" for anio in range(2024, 2035)]
 
 def limpiar_nombre(nombre):
