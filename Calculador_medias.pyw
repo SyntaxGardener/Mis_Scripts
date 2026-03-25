@@ -124,7 +124,7 @@ class AppCalculadora:
 
         self.btn_cargar = tk.Button(
             fila_btn,
-            text="📂  Seleccionar PDFs",
+            text="📂  Seleccionar PDF (1 o más)",
             command=self.seleccionar_pdfs,
             bg="#1565C0", fg="white",
             font=("Arial", 10, "bold"),
