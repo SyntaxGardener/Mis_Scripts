@@ -48,6 +48,8 @@ LIBRERIAS_BASE = [
     ("matplotlib",        "matplotlib",        "Gráficos",                 False),
     ("yt_dlp",            "yt-dlp",            "Descarga YouTube",         True),
     ("moviepy",           "moviepy",           "Videos",                   True),
+    ("vc2",               "opencv-python",     "Vídeos frame a frame",     False),
+    ("whisper",           "openai-whisper",    "Subtítulos (IA)",          True),
     ("win32com",          "pywin32",           "Automatización Win",       False),
     ("pythoncom",         "pywin32",           "Componentes COM",          False),
     ("PyInstaller",       "pyinstaller",       "Creador de .EXE",          False),
@@ -243,7 +245,7 @@ def check_and_update():
         if input("¿Instalar ahora? (s/n): ").lower() == 's':
             for paquete in faltantes:
                 print(f"\nInstalando {paquete}...")
-                subprocess.check_call([sys.executable, "-m", "pip", "install", paquete])
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", paquete])
                 instaladas.append((paquete, False))
             print(f"\n{VERDE}Instalación completada.{RESET}")
 
