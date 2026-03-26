@@ -1,5 +1,5 @@
 # SubtitleGen  — subtitulos.pyw
-# Requiere: pip install openai-whisper   |   ffmpeg en el PATH del sistema
+# Requiere: pip install openai-whisper   |   ffmpeg en el PATH del sistema o junto al .pyw
 # ─────────────────────────────────────────────────────────────────────────────
 
 import tkinter as tk
@@ -8,6 +8,12 @@ import threading
 import subprocess
 import os
 import sys
+
+# Añadir la carpeta del propio script al PATH para que ffmpeg se encuentre
+# aunque no esté instalado en el sistema (ej. entorno portable en USB)
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+if _script_dir not in os.environ.get("PATH", "").split(os.pathsep):
+    os.environ["PATH"] = _script_dir + os.pathsep + os.environ.get("PATH", "")
 
 # ── Paleta ────────────────────────────────────────────────────────────────────
 BG        = "#cfd3dc"   # gris azulado medio
@@ -54,7 +60,7 @@ class SubtitleGen:
 
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("SubtitleGen: Generación e Incrustación de Subtítulos")
+        self.root.title("SubtitleGen ~ Generación e Incrustación de Subtítulos")
         self.root.configure(bg=BG)
         self.root.resizable(True, False)
 
@@ -138,7 +144,7 @@ class SubtitleGen:
                    bg=BG3, fg=FG, relief=tk.FLAT,
                    font=("Segoe UI", 9),
                    buttonbackground=BG2).pack(side=tk.LEFT, padx=(3, 10))
-        tk.Label(row_d, text="(3-4 canciones / 5-6 diálogos)",
+        tk.Label(row_d, text="(3-4 canción / 5-6 diálogo / usa pausas del audio para cortar)",
                  bg=BG, fg=FG2, font=("Segoe UI", 8)).pack(side=tk.LEFT)
 
         # Ruta del .srt
