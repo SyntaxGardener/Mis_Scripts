@@ -48,8 +48,8 @@ LIBRERIAS_BASE = [
     ("matplotlib",        "matplotlib",        "Gráficos",                 False),
     ("yt_dlp",            "yt-dlp",            "Descarga YouTube",         True),
     ("moviepy",           "moviepy",           "Videos",                   True),
-    ("vc2",               "opencv-python",     "Vídeos frame a frame",     False),
-    ("whisper",           "openai-whisper",    "Subtítulos (IA)",          True),
+    ("cv2",               "opencv-python",     "Vídeos frame a frame",     False),
+    ("whisper",           "openai-whisper",    "Whisper (OpenAI IA)",      True),
     ("win32com",          "pywin32",           "Automatización Win",       False),
     ("pythoncom",         "pywin32",           "Componentes COM",          False),
     ("PyInstaller",       "pyinstaller",       "Creador de .EXE",          False),
@@ -224,8 +224,8 @@ def check_and_update():
     # Combinar base + extras
     extras = cargar_extras()
     librerias = LIBRERIAS_BASE + extras
-
-    # 1. CHEQUEO
+    
+    # 1. CHEQUEO (Versión robusta)
     print(f"{AZUL}{BOLD}[ PASO 1 ] Verificando librerías instaladas...{RESET}\n")
     faltantes = []
     instaladas = []
@@ -235,8 +235,11 @@ def check_and_update():
             importlib.import_module(lib)
             print(f"-> {VERDE}[ OK ]{RESET}")
             instaladas.append((pip_name, critica))
-        except ImportError:
-            print(f"-> {ROJO}[ NO ENCONTRADA ]{RESET}")
+        except Exception as e: # Captura fallos de importación o errores internos
+            print(f"-> {ROJO}[ ERROR DE CARGA / NO ENCONTRADA ]{RESET}")
+            # Si el error es el que tuviste, damos una pista:
+            if "NoneType" in str(e):
+                print(f"    {AMARILLO}¡Ojo! Posible conflicto: instalaste 'whisper' en vez de 'openai-whisper'{RESET}")
             faltantes.append(pip_name)
 
     # 2. INSTALACIÓN

@@ -138,13 +138,13 @@ class SubtitleGen:
         row_d = tk.Frame(outer, bg=BG)
         row_d.pack(fill=tk.X, pady=3)
         self._lbl(row_d, "Duración máx. segmento (s):", side=tk.LEFT)
-        tk.Spinbox(row_d, from_=1.0, to=15.0, increment=0.5,
+        tk.Spinbox(row_d, from_=1.0, to=15.0, increment=0.25,
                    textvariable=self.max_seg_duration,
                    format="%.1f", width=5,
                    bg=BG3, fg=FG, relief=tk.FLAT,
                    font=("Segoe UI", 9),
                    buttonbackground=BG2).pack(side=tk.LEFT, padx=(3, 10))
-        tk.Label(row_d, text="(3-4 canción / 5-6 diálogo / usa pausas del audio para cortar)",
+        tk.Label(row_d, text="(2.5-4 canción / 4-5 diálogo / 5-6 documental)",
                  bg=BG, fg=FG2, font=("Segoe UI", 8)).pack(side=tk.LEFT)
 
         # Ruta del .srt
@@ -466,15 +466,20 @@ class SubtitleGen:
                 chunk_end = w["end"]
                 duration  = chunk_end - chunk_start
 
-                # Pausa hasta la siguiente palabra (si existe)
-                next_gap = (words[i + 1]["start"] - chunk_end
-                            if i + 1 < len(words) else 0.0)
+                # Calculamos el hueco hasta la siguiente palabra
+                next_gap = (words[i + 1]["start"] - chunk_end if i + 1 < len(words) else 0.0)
 
-                # Cortar si: superamos max_dur Y (es el final O hay pausa ≥ 0.15 s)
+                # --- NUEVA LÓGICA DE CORTE ---
                 is_last = (i == len(words) - 1)
-                if duration >= max_dur and (is_last or next_gap >= 0.15):
-                    out.append({"start": chunk_start, "end": chunk_end,
-                                "text": "".join(chunk_words).strip()})
+                
+                # Condición 1: Se pasó del tiempo máximo (Corte forzado)
+                # Condición 2: Hay una pausa decente (Corte natural)
+                if (duration >= max_dur) or (next_gap >= 0.15):
+                    out.append({
+                        "start": chunk_start, 
+                        "end": chunk_end,
+                        "text": "".join(chunk_words).strip()
+                    })
                     if not is_last:
                         chunk_start = words[i + 1]["start"]
                         chunk_words = []

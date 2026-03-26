@@ -118,6 +118,7 @@ class MenuFinalPerfecto:
         self.estados_carpetas = {cat: False for cat in COLORES.keys()}
 
         self._construir_ui()
+        self._asegurar_gitconfig(os.path.join(self.ruta_config, ".gitconfig"))
         self.cargar_scripts()
         threading.Thread(target=self.comprobar_git_status, daemon=True).start()
 
@@ -299,24 +300,38 @@ class MenuFinalPerfecto:
         return env
 
     def _asegurar_gitconfig(self, ruta):
-        """Crea o completa el .gitconfig del USB con safe.directory=* y user básico."""
-        lineas_requeridas = {
-            "[safe]": "	directory = *",
-            "[credential]": f"	helper = store --file {self.ruta_creds}",
-        }
+        """Crea o completa el .gitconfig del USB.
+        Si falta user.name/email los pide una sola vez y los guarda."""
         contenido = ""
         if os.path.exists(ruta):
             with open(ruta, "r", encoding="utf-8") as f:
                 contenido = f.read()
 
-        for seccion, valor in lineas_requeridas.items():
-            if valor.strip() not in contenido:
+        def añadir(seccion, clave_valor):
+            nonlocal contenido
+            if clave_valor.strip() not in contenido:
                 if seccion not in contenido:
-                    contenido += "\n" + seccion + "\n" + valor + "\n"
+                    contenido += "\n" + seccion + "\n" + clave_valor + "\n"
                 else:
-                    # insertar tras la cabecera de sección
                     contenido = contenido.replace(
-                        seccion, seccion + "\n" + valor, 1)
+                        seccion, seccion + "\n" + clave_valor, 1)
+
+        añadir("[safe]",       "\tdirectory = *")
+        añadir("[credential]", "\thelper = store --file " + self.ruta_creds)
+
+        # user.name y user.email — obligatorios para commit
+        if "name =" not in contenido or "email =" not in contenido:
+            nombre = simpledialog.askstring(
+                "Configuración git",
+                "Primera vez en este PC.\nIntroduce tu nombre para los commits:",
+                parent=self.root)
+            email = simpledialog.askstring(
+                "Configuración git",
+                "Introduce tu email de GitHub:",
+                parent=self.root)
+            n = nombre.strip() if nombre else "Usuario"
+            e = email.strip() if email else "usuario@usb.local"
+            añadir("[user]", "\tname = " + n + "\n\temail = " + e)
 
         with open(ruta, "w", encoding="utf-8") as f:
             f.write(contenido)
@@ -424,26 +439,29 @@ class MenuFinalPerfecto:
                 bg="#1c1c1c", fg=FG_DIM, state="disabled", text="📥 DESCARGAR"))
 
     def realizar_push(self):
-        cmd = self.obtener_comando_git()
-        env = self._entorno_git()
         mensaje = simpledialog.askstring("Subir cambios",
                                          "Mensaje del commit:", parent=self.root)
-        if mensaje:
-            try:
-                kw = dict(cwd=self.base_dir,
-                          creationflags=subprocess.CREATE_NO_WINDOW, env=env)
-                subprocess.run([cmd, "config", "credential.helper",
-                                f"store --file {self.ruta_creds}"], **kw)
-                subprocess.run([cmd, "add", "."], check=True, **kw)
-                subprocess.run([cmd, "commit", "-m", mensaje], check=True, **kw)
-                res = subprocess.run([cmd, "push"], capture_output=True, text=True, **kw)
-                if res.returncode == 0:
-                    messagebox.showinfo("Éxito", "¡Subido a GitHub correctamente!")
-                    self.actualizar_todo()
-                else:
-                    messagebox.showerror("Error", f"Fallo al subir:\n{res.stderr}")
-            except Exception as e:
-                messagebox.showerror("Error", str(e))
+        if not mensaje:
+            return
+        # git add
+        r = self._git_run(["add", "."], cwd=self.base_dir)
+        if r.returncode != 0:
+            messagebox.showerror("Error en add", r.stderr or "git add falló")
+            return
+        # git commit
+        r = self._git_run(["commit", "-m", mensaje], cwd=self.base_dir)
+        if r.returncode != 0:
+            err = (r.stderr or r.stdout or "git commit falló").strip()
+            messagebox.showerror("Error en commit", err)
+            return
+        # git push
+        r = self._git_run(["push"], cwd=self.base_dir)
+        if r.returncode == 0:
+            messagebox.showinfo("Éxito", "¡Subido a GitHub correctamente!")
+            self.actualizar_todo()
+        else:
+            messagebox.showerror("Error en push",
+                                 r.stderr or r.stdout or "git push falló")
 
     def realizar_pull(self):
         cmd = self.obtener_comando_git()
