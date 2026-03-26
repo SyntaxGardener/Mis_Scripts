@@ -317,7 +317,9 @@ class MenuFinalPerfecto:
                         seccion, seccion + "\n" + clave_valor, 1)
 
         añadir("[safe]",       "\tdirectory = *")
-        añadir("[credential]", "\thelper = store --file " + self.ruta_creds)
+        # Primero vaciamos el helper para anular GCM si estaba puesto,
+        # luego ponemos nuestro store portable
+        añadir("[credential]", "\thelper = \n\thelper = store --file " + self.ruta_creds)
 
         # user.name y user.email — obligatorios para commit
         if "name =" not in contenido or "email =" not in contenido:
@@ -454,8 +456,10 @@ class MenuFinalPerfecto:
             err = (r.stderr or r.stdout or "git commit falló").strip()
             messagebox.showerror("Error en commit", err)
             return
-        # git push
-        r = self._git_run(["push"], cwd=self.base_dir)
+        # git push — forzamos store y desactivamos GCM con -c
+        r = self._git_run(["-c", "credential.helper=",
+                           "-c", "credential.helper=store --file " + self.ruta_creds,
+                           "push"], cwd=self.base_dir)
         if r.returncode == 0:
             messagebox.showinfo("Éxito", "¡Subido a GitHub correctamente!")
             self.actualizar_todo()
