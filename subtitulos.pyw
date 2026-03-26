@@ -138,7 +138,7 @@ class SubtitleGen:
         row_d = tk.Frame(outer, bg=BG)
         row_d.pack(fill=tk.X, pady=3)
         self._lbl(row_d, "Duración máx. segmento (s):", side=tk.LEFT)
-        tk.Spinbox(row_d, from_=1.0, to=15.0, increment=0.25,
+        tk.Spinbox(row_d, from_=1.0, to=15.0, increment=0.5,
                    textvariable=self.max_seg_duration,
                    format="%.1f", width=5,
                    bg=BG3, fg=FG, relief=tk.FLAT,
