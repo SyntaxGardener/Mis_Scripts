@@ -36,6 +36,17 @@ def fmt(s):
     return f"{int(s//60)}:{int(s%60):02d}"
 
 
+def abrir_carpeta(path):
+    """Abre el explorador en la carpeta indicada (o la del archivo)."""
+    carpeta = path if os.path.isdir(path) else os.path.dirname(path)
+    if sys.platform == 'win32':
+        os.startfile(carpeta)
+    elif sys.platform == 'darwin':
+        subprocess.Popen(['open', carpeta])
+    else:
+        subprocess.Popen(['xdg-open', carpeta])
+
+
 def mkbtn(parent, text, cmd, bg=ACCENT, fg='white',
           w=None, state='normal', font=None):
     kw = dict(text=text, command=cmd, bg=bg, fg=fg,
@@ -169,9 +180,10 @@ class TabCortador:
         self.current_time = 0;    self.update_job = None
         self.audio_loaded = False; self.temp_audio = None
         self.frags_g = []; self.frags_e = []
-        self.v_sep      = tk.BooleanVar(value=False)
-        self.v_trans    = tk.BooleanVar(value=False)
-        self.v_trans_dur= tk.DoubleVar(value=0.5)
+        self.v_sep          = tk.BooleanVar(value=False)
+        self.v_trans        = tk.BooleanVar(value=False)
+        self.v_trans_dur    = tk.DoubleVar(value=0.5)
+        self.v_abrir_carpeta= tk.BooleanVar(value=False)
         self._build()
 
     def _build(self):
@@ -302,6 +314,10 @@ class TabCortador:
                                state='disabled', font=FN)
         self.spin.pack(side='left', padx=2)
         tk.Label(tr2, text="s", bg=CARD, font=FN).pack(side='left')
+
+        tk.Checkbutton(opt, text="Abrir carpeta al finalizar",
+                       variable=self.v_abrir_carpeta, bg=CARD, fg=TEXT, font=FN,
+                       activebackground=CARD).pack(anchor='w', pady=(4,0))
 
         self.btn_proc = tk.Button(
             ri, text="✂️  PROCESAR VIDEO", command=self._iniciar,
@@ -742,6 +758,7 @@ class TabCortador:
         self._status("✅ Video exportado")
         messagebox.showinfo("✅ Listo",
             f"Guardado en:\n{dest}\n\nFragmentos: {len(frags)}  ·  Duración: {fmt(dur)}")
+        if self.v_abrir_carpeta.get(): abrir_carpeta(dest)
 
     def _sep(self):
         carpeta = filedialog.askdirectory(title="Carpeta para los fragmentos")
@@ -759,6 +776,7 @@ class TabCortador:
         clip.close()
         self._status("✅ Fragmentos exportados")
         messagebox.showinfo("✅ Listo", f"Guardados {n} archivos en:\n{carpeta}")
+        if self.v_abrir_carpeta.get(): abrir_carpeta(carpeta)
 
     def _elim(self):
         dest = filedialog.asksaveasfilename(
@@ -787,6 +805,7 @@ class TabCortador:
             f"Guardado en:\n{dest}\n\n"
             f"Eliminados: {len(elim)}  ·  "
             f"Original: {fmt(self.duracion)}  →  Final: {fmt(sum(b-a for a,b in tramos))}")
+        if self.v_abrir_carpeta.get(): abrir_carpeta(dest)
 
     def _status(self, msg):
         col = (GREEN if msg.startswith("✅") else
@@ -810,6 +829,7 @@ class TabEditor:
         self.caratula_path = None
         self.contra_path   = None
         self.mapa_fuentes  = self._cargar_fuentes()
+        self.v_abrir_carpeta = tk.BooleanVar(value=False)
         self._build()
 
     def _cargar_fuentes(self):
@@ -903,6 +923,9 @@ class TabEditor:
         prog.pack(fill='x', padx=6, pady=(4,0))
         st = tk.Label(parent, text="✅ Listo", fg=GREEN, bg=CARD, font=FNS)
         st.pack()
+        tk.Checkbutton(parent, text="Abrir carpeta al finalizar",
+                       variable=self.v_abrir_carpeta, bg=CARD, fg=TEXT, font=FNS,
+                       activebackground=CARD).pack(anchor='w', padx=6)
         return prog, st
 
     def _st(self, lbl, msg):
@@ -1153,6 +1176,7 @@ class TabEditor:
             if dest:
                 vf.write_videofile(dest, logger=None)
                 self._st(self.t_st_lbl, f"✅ Guardado: {os.path.basename(dest)}")
+                if self.v_abrir_carpeta.get(): abrir_carpeta(dest)
             else:
                 self._st(self.t_st_lbl,"⏸️ Cancelado")
             clip.close(); tc.close(); vf.close()
@@ -1256,7 +1280,10 @@ class TabEditor:
             dest = filedialog.asksaveasfilename(
                 defaultextension=".mp4", filetypes=[("MP4","*.mp4")],
                 initialfile="video_multi_texto.mp4")
-            if dest: vf.write_videofile(dest, logger=None); self._st(self.m_st_lbl,"✅ Guardado")
+            if dest:
+                vf.write_videofile(dest, logger=None)
+                self._st(self.m_st_lbl,"✅ Guardado")
+                if self.v_abrir_carpeta.get(): abrir_carpeta(dest)
             else:    self._st(self.m_st_lbl,"⏸️ Cancelado")
             clip.close(); [c.close() for c in tcs]; vf.close()
         except Exception as e: self._st(self.m_st_lbl, f"❌ {e}")
@@ -1301,7 +1328,10 @@ class TabEditor:
             dest = filedialog.asksaveasfilename(
                 defaultextension=".mp4", filetypes=[("MP4","*.mp4")],
                 initialfile="video_efectos.mp4")
-            if dest: clip.write_videofile(dest, logger=None); self._st(self.ef_st_lbl,"✅ Guardado")
+            if dest:
+                clip.write_videofile(dest, logger=None)
+                self._st(self.ef_st_lbl,"✅ Guardado")
+                if self.v_abrir_carpeta.get(): abrir_carpeta(dest)
             else:    self._st(self.ef_st_lbl,"⏸️ Cancelado")
             clip.close()
         except Exception as e: self._st(self.ef_st_lbl, f"❌ {e}")
@@ -1358,7 +1388,10 @@ class TabEditor:
             dest = filedialog.asksaveasfilename(
                 defaultextension=".mp4", filetypes=[("MP4","*.mp4")],
                 initialfile="video_musica.mp4")
-            if dest: vc.write_videofile(dest, logger=None); self._st(self.mu_st_lbl,"✅ Guardado")
+            if dest:
+                vc.write_videofile(dest, logger=None)
+                self._st(self.mu_st_lbl,"✅ Guardado")
+                if self.v_abrir_carpeta.get(): abrir_carpeta(dest)
             else:    self._st(self.mu_st_lbl,"⏸️ Cancelado")
             video.close(); audio.close()
         except Exception as e: self._st(self.mu_st_lbl, f"❌ {e}")
@@ -1398,7 +1431,10 @@ class TabEditor:
             dest = filedialog.asksaveasfilename(
                 defaultextension=".mp4", filetypes=[("MP4","*.mp4")],
                 initialfile="video_recortado.mp4")
-            if dest: cr.write_videofile(dest, logger=None); self._st(self.rc_st_lbl,"✅ Guardado")
+            if dest:
+                cr.write_videofile(dest, logger=None)
+                self._st(self.rc_st_lbl,"✅ Guardado")
+                if self.v_abrir_carpeta.get(): abrir_carpeta(dest)
             else:    self._st(self.rc_st_lbl,"⏸️ Cancelado")
             clip.close(); cr.close()
         except Exception as e: self._st(self.rc_st_lbl, f"❌ {e}")
@@ -1464,7 +1500,10 @@ class TabEditor:
             dest = filedialog.asksaveasfilename(
                 defaultextension=".mp4", filetypes=[("MP4","*.mp4")],
                 initialfile="video_caratulas.mp4")
-            if dest: vf.write_videofile(dest, logger=None); self._st(self.cr_st_lbl,"✅ Guardado")
+            if dest:
+                vf.write_videofile(dest, logger=None)
+                self._st(self.cr_st_lbl,"✅ Guardado")
+                if self.v_abrir_carpeta.get(): abrir_carpeta(dest)
             else:    self._st(self.cr_st_lbl,"⏸️ Cancelado")
             for c in clips: c.close()
         except Exception as e: self._st(self.cr_st_lbl, f"❌ {e}")
@@ -1627,6 +1666,7 @@ class TabEditor:
             if dest:
                 vf.write_videofile(dest, logger=None)
                 self._st(self.wm_st, "✅ Guardado")
+                if self.v_abrir_carpeta.get(): abrir_carpeta(dest)
             else:
                 self._st(self.wm_st, "⏸️ Cancelado")
             clip.close(); marca.close(); vf.close()
@@ -1706,6 +1746,7 @@ class TabEditor:
                     f"Video guardado.\n\n"
                     f"Duración original: {fmt(clip.duration)}\n"
                     f"Duración nueva:    {fmt(nueva_dur)}")
+                if self.v_abrir_carpeta.get(): abrir_carpeta(dest)
             else:
                 self._st(self.vel_st, "⏸️ Cancelado")
             clip.close(); vf.close()
@@ -1825,6 +1866,7 @@ class TabEditor:
                     f"Video guardado.\n\n"
                     f"Original: {vw}×{vh}\n"
                     f"Nuevo:    {tw}×{th}  ({mode})")
+                if self.v_abrir_carpeta.get(): abrir_carpeta(dest)
             else:
                 self._st(self.crop_st, "⏸️ Cancelado")
             clip.close(); vf.close()
@@ -2006,6 +2048,7 @@ class TabEditor:
                 self._st(self.srt_st, "✅ Guardado")
                 messagebox.showinfo("✅ Listo",
                     f"Video guardado.\n{len(subs)} subtítulos integrados.")
+                if self.v_abrir_carpeta.get(): abrir_carpeta(dest)
             else:
                 self._st(self.srt_st, "⏸️ Cancelado")
             clip.close()
@@ -2019,6 +2062,7 @@ class TabEditor:
 class TabUnir:
     def __init__(self, frame, root):
         self.frame = frame; self.root = root; self.videos = []
+        self.v_abrir_carpeta = tk.BooleanVar(value=False)
         self._build()
 
     def _build(self):
@@ -2096,6 +2140,9 @@ class TabUnir:
         self.lbl_st = tk.Label(right, text="Añade al menos 2 videos para empezar",
                                fg=TEXT_S, bg=BG, font=FNS, anchor='w')
         self.lbl_st.grid(row=3, column=0, sticky='ew', pady=(4,0))
+        tk.Checkbutton(right, text="Abrir carpeta al finalizar",
+                       variable=self.v_abrir_carpeta, bg=BG, fg=TEXT, font=FNS,
+                       activebackground=BG).grid(row=4, column=0, sticky='w', pady=(2,0))
 
     def _agregar(self):
         files = filedialog.askopenfilenames(
@@ -2173,6 +2220,7 @@ class TabUnir:
                 messagebox.showinfo("✅ Listo",
                     f"Guardado:\n{os.path.basename(dest)}\n"
                     f"Duración: {fmt(final.duration)}")
+                if self.v_abrir_carpeta.get(): abrir_carpeta(dest)
             else:
                 self.lbl_st.config(text="⏸️ Cancelado", fg=TEXT_S)
             final.close()
@@ -2194,6 +2242,7 @@ class TabFotosVideo:
         self.sel_idx    = -1;  self.sel_frame  = None
         self.audio_path = None
         self.procesando = False
+        self.v_abrir_carpeta = tk.BooleanVar(value=False)
         self._build()
 
     def _build(self):
@@ -2290,6 +2339,9 @@ class TabFotosVideo:
         ).pack(side='left'))
 
         # Procesar
+        tk.Checkbutton(right, text="Abrir carpeta al finalizar",
+                       variable=self.v_abrir_carpeta, bg=BG, fg=TEXT, font=FNS,
+                       activebackground=BG).grid(row=4, column=0, sticky='w', pady=(2,0))
         self.btn_proc = tk.Button(
             right, text="🎬  CREAR VIDEO", command=self._iniciar,
             bg=GREEN, fg='white', font=('Segoe UI',11,'bold'),
@@ -2457,6 +2509,7 @@ class TabFotosVideo:
                 messagebox.showinfo("✅ Listo",
                     f"Video guardado:\n{dest}\n\n"
                     f"Fotos: {total}  ·  Duración: {fmt(video.duration)}")
+                if self.v_abrir_carpeta.get(): abrir_carpeta(dest)
             else:
                 self.lbl_st.config(text="⏸️ Cancelado", fg=TEXT_S)
             video.close()
@@ -2505,6 +2558,7 @@ class TabConvertir:
         self.root       = root
         self.videos     = []   # lista de rutas
         self.procesando = False
+        self.v_abrir_carpeta = tk.BooleanVar(value=False)
         self._build()
 
     def _build(self):
@@ -2647,7 +2701,7 @@ class TabConvertir:
     def _agregar(self):
         files = filedialog.askopenfilenames(
             title="Seleccionar videos",
-            filetypes=[("Videos", "*.mp4 *.avi *.mov *.mkv *.webm *.m4v *.mpg *.mpeg"),
+            filetypes=[("Videos", "*.mp4 *.avi *.mov *.mkv *.webm *.m4v *.mpg *.mpeg *.flv"),
                        ("Todos", "*.*")])
         for f in files:
             if f not in self.videos:
@@ -2716,29 +2770,64 @@ class TabConvertir:
                     dest  = os.path.join(carpeta, base + ext)
 
                 try:
-                    clip = VideoFileClip(src)
+                    es_flv = os.path.splitext(src)[1].lower() == '.flv'
 
-                    # Redimensionar si hace falta
-                    if res:
-                        clip = clip.resized(new_size=res)
+                    if es_flv and not gif:
+                        # FLV: usar ffmpeg directamente para evitar cuelgues con
+                        # codecs antiguos (VP6, Sorenson H.263) via moviepy.
+                        # Buscar ffmpeg junto al script primero, luego en PATH.
+                        _script_dir = os.path.dirname(os.path.abspath(__file__))
+                        _ffmpeg_local = os.path.join(_script_dir, 'ffmpeg.exe')
+                        ffmpeg_bin = _ffmpeg_local if os.path.isfile(_ffmpeg_local) else 'ffmpeg'
 
-                    if gif:
-                        clip.write_gif(dest, logger=None)
-
-                    elif solo_audio:
-                        if clip.audio is None:
-                            raise ValueError("El video no tiene pista de audio")
-                        clip.audio.write_audiofile(dest, logger=None,
-                                                   codec=ac)
+                        cmd = [ffmpeg_bin, '-y', '-i', src]
+                        if res:
+                            cmd += ['-vf', f'scale={res[0]}:{res[1]}']
+                        if solo_audio:
+                            cmd += ['-vn', '-acodec', ac]
+                        else:
+                            if vc:
+                                cmd += ['-vcodec', vc]
+                            if vc in ('libx264', 'libx265', 'mpeg4'):
+                                cmd += ['-crf', str(crf)]
+                            if ac:
+                                cmd += ['-acodec', ac]
+                        cmd.append(dest)
+                        resultado = subprocess.run(
+                            cmd,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            creationflags=(subprocess.CREATE_NO_WINDOW
+                                           if sys.platform == 'win32' else 0)
+                        )
+                        if resultado.returncode != 0:
+                            err_msg = resultado.stderr.decode('utf-8', errors='replace')
+                            raise RuntimeError(f"ffmpeg error:\n{err_msg[-400:]}")
                     else:
-                        kw = dict(logger=None, audio_codec=ac)
-                        if vc:
-                            kw['codec'] = vc
-                        if vc in ('libx264', 'libx265', 'mpeg4'):
-                            kw['ffmpeg_params'] = ['-crf', str(crf)]
-                        clip.write_videofile(dest, **kw)
+                        clip = VideoFileClip(src)
 
-                    clip.close()
+                        # Redimensionar si hace falta
+                        if res:
+                            clip = clip.resized(new_size=res)
+
+                        if gif:
+                            clip.write_gif(dest, logger=None)
+
+                        elif solo_audio:
+                            if clip.audio is None:
+                                raise ValueError("El video no tiene pista de audio")
+                            clip.audio.write_audiofile(dest, logger=None,
+                                                       codec=ac)
+                        else:
+                            kw = dict(logger=None, audio_codec=ac)
+                            if vc:
+                                kw['codec'] = vc
+                            if vc in ('libx264', 'libx265', 'mpeg4'):
+                                kw['ffmpeg_params'] = ['-crf', str(crf)]
+                            clip.write_videofile(dest, **kw)
+
+                        clip.close()
+
                     ok += 1
 
                 except Exception as e:
@@ -2754,6 +2843,8 @@ class TabConvertir:
                 self._status(f"✅ {ok} archivo{'s' if ok!=1 else ''} convertido{'s' if ok!=1 else ''}")
                 messagebox.showinfo("✅ Listo",
                     f"Conversión completada.\n{ok} de {total} archivos convertidos.")
+                if self.v_abrir_carpeta.get():
+                    abrir_carpeta(self.dest_folder or os.path.dirname(self.videos[0]))
             else:
                 self._status(f"⚠️ {ok}/{total} convertidos — {len(errores)} con error")
                 detalle = "\n".join(errores[:8])
