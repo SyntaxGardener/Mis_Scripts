@@ -22,6 +22,8 @@ qrcode
 matplotlib
 yt-dlp
 moviepy
+opencv-python
+openai-whisper
 pywin32
 pywin32
 pyinstaller
