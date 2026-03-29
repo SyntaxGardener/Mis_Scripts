@@ -41,5 +41,5 @@ config.ini
 # Carpeta de resúmenes generados, de ghostscript y de Poppler
 Resumenes/
 gs/
-bin/
+poppler/
 
