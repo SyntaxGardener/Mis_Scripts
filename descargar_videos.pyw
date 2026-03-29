@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # Descargador portable — YouTube  +  RTVE Mediateca  +  EducaMadrid Mediateca
-# Requiere: pip install yt-dlp  |  ffmpeg en el PATH o junto al .pyw
+# Requiere: pip install yt-dlp requests beautifulsoup4  |  ffmpeg en el PATH o junto al .pyw
 # ─────────────────────────────────────────────────────────────────────────────
 
 import tkinter as tk
@@ -8,6 +8,8 @@ from tkinter import ttk, messagebox, filedialog
 import threading
 import os
 import sys
+import re
+from urllib.parse import urljoin
 
 # ── Paleta ────────────────────────────────────────────────────────────────────
 BG        = "#f0f2f5"
@@ -296,15 +298,9 @@ class DescargadorApp:
 
         fmt_f = tk.Frame(parent, bg=BG)
         fmt_f.pack(fill=tk.X, pady=(10, 2))
-        tk.Label(fmt_f, text="Calidad:", bg=BG, fg=FG2,
-                 font=("Segoe UI", 9)).pack(side=tk.LEFT)
-        for lbl, val in [("Mejor disponible", "mejor"),
-                         ("720p", "720p"),
-                         ("480p", "480p")]:
-            tk.Radiobutton(fmt_f, text=lbl, variable=self.educa_format, value=val,
-                           bg=BG, fg=FG, selectcolor=BG2,
-                           activebackground=BG,
-                           font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=6)
+        tk.Label(fmt_f,
+                 text="ℹ  Se descarga la calidad que sirve el servidor (MP4 directo)",
+                 bg=BG, fg=FG2, font=("Segoe UI", 8, "italic")).pack(side=tk.LEFT)
 
         tk.Checkbutton(parent, text="Abrir carpeta al terminar",
                        variable=self.educa_open_folder,
@@ -457,7 +453,188 @@ class DescargadorApp:
             daemon=True
         ).start()
 
-    # ── EducaMadrid Mediateca ─────────────────────────────────────────────────
+    # ── EducaMadrid Mediateca — métodos auxiliares ───────────────────────────
+
+    _EDUCA_STREAM_PATTERNS = [
+        "https://mediateca.educa.madrid.org/streaming.php?id={id}&ext=.mp4",
+        "https://mediateca.educa.madrid.org/streaming.php?id={id}",
+        "https://mediateca.educa.madrid.org/video/{id}/download",
+    ]
+    _EDUCA_UA = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    )
+
+    def _educa_extraer_id(self, url: str):
+        m = re.search(r"/video/([a-z0-9]+)", url)
+        return m.group(1) if m else None
+
+    def _educa_obtener_urls(self, url_pagina: str, video_id: str) -> tuple:
+        """Devuelve (titulo, [lista_de_urls_candidatas])."""
+        try:
+            from bs4 import BeautifulSoup
+            import requests as _req
+        except ImportError:
+            return ("video", [])
+
+        session = _req.Session()
+        session.headers.update({
+            "User-Agent": self._EDUCA_UA,
+            "Referer": url_pagina,
+        })
+
+        resp = session.get(url_pagina, timeout=15)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        h1 = soup.find("h1")
+        titulo = h1.get_text(strip=True) if h1 else "video"
+
+        urls = []
+        for tag in soup.find_all(["video", "source"]):
+            src = tag.get("src") or tag.get("data-src")
+            if src:
+                urls.append(urljoin(url_pagina, src))
+        for tag in soup.find_all(True):
+            for attr, val in tag.attrs.items():
+                if isinstance(val, str) and ".mp4" in val:
+                    urls.append(urljoin(url_pagina, val))
+        for script in soup.find_all("script"):
+            encontrados = re.findall(r'https?://[^\s\'"]+\.mp4[^\s\'"]*',
+                                     script.get_text())
+            urls.extend(encontrados)
+
+        # Añadir patrones conocidos
+        for patron in self._EDUCA_STREAM_PATTERNS:
+            urls.append(patron.format(id=video_id))
+
+        return (titulo, list(dict.fromkeys(urls)))
+
+    def _educa_descargar_archivo(self, url_video: str, ruta: str) -> bool:
+        """Descarga directa con requests, actualizando barra de progreso."""
+        try:
+            import requests as _req
+        except ImportError:
+            return False
+
+        session = _req.Session()
+        session.headers.update({"User-Agent": self._EDUCA_UA})
+        try:
+            resp = session.get(url_video, stream=True, timeout=30)
+            if resp.status_code != 200:
+                return False
+            if "text/html" in resp.headers.get("Content-Type", ""):
+                return False
+
+            total = int(resp.headers.get("Content-Length", 0))
+            descargado = 0
+
+            with open(ruta, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=65536):
+                    if chunk:
+                        f.write(chunk)
+                        descargado += len(chunk)
+                        if total:
+                            pct = int(descargado / total * 100)
+                            self.pbar.configure(
+                                mode="determinate", maximum=100, value=pct)
+                            self._status(
+                                f"Descargando… {pct}%  "
+                                f"({descargado/1_048_576:.1f} / "
+                                f"{total/1_048_576:.1f} MB)")
+            return True
+        except Exception:
+            return False
+
+    def _educa_run(self, url_pagina: str, folder: str, open_folder: bool):
+        """Hilo principal de descarga EducaMadrid."""
+        self.pbar.configure(mode="indeterminate")
+        self.pbar.start(10)
+        try:
+            # Verificar dependencias
+            try:
+                import requests          # noqa: F401
+                from bs4 import BeautifulSoup  # noqa: F401
+            except ImportError as e:
+                messagebox.showerror(
+                    "Dependencia faltante",
+                    f"{e}\n\nEjecuta:\n  pip install requests beautifulsoup4")
+                return
+
+            video_id = self._educa_extraer_id(url_pagina)
+            if not video_id:
+                messagebox.showerror("Error",
+                                     "No se pudo extraer el ID del vídeo de la URL.")
+                return
+
+            self._status("Analizando página de EducaMadrid…")
+            titulo, urls_candidatas = self._educa_obtener_urls(url_pagina, video_id)
+
+            if not urls_candidatas:
+                messagebox.showerror("Error",
+                                     "No se encontraron URLs de vídeo en la página.")
+                return
+
+            # Nombre de archivo seguro
+            nombre = re.sub(r'[\\/*?:"<>|]', "", titulo).strip().replace(" ", "_")
+            nombre = (nombre[:80] or video_id) + ".mp4"
+            ruta_destino = os.path.join(folder, nombre)
+
+            self._status(f"Probando {len(urls_candidatas)} URL(s) posible(s)…")
+            self.pbar.stop()
+
+            descargado = False
+            for i, url_vid in enumerate(urls_candidatas, 1):
+                self._status(
+                    f"[{i}/{len(urls_candidatas)}] Probando: "
+                    f"{url_vid[:60]}…")
+                self.pbar.configure(mode="indeterminate")
+                self.pbar.start(10)
+                if self._educa_descargar_archivo(url_vid, ruta_destino):
+                    # Verificar que el archivo tiene contenido real
+                    if os.path.exists(ruta_destino) and \
+                            os.path.getsize(ruta_destino) > 10_000:
+                        descargado = True
+                        break
+                    else:
+                        try:
+                            os.remove(ruta_destino)
+                        except Exception:
+                            pass
+                self.pbar.stop()
+
+            if descargado:
+                self._status("✅  Descarga completada")
+                messagebox.showinfo(
+                    "Éxito",
+                    f"¡Archivo guardado correctamente!\n\n{ruta_destino}")
+                if open_folder and os.path.exists(folder):
+                    if sys.platform == "win32":
+                        os.startfile(folder)
+                    elif sys.platform == "darwin":
+                        import subprocess; subprocess.Popen(["open", folder])
+                    else:
+                        import subprocess
+                        subprocess.Popen(["xdg-open", folder])
+            else:
+                self._status("❌  No se pudo descargar el vídeo")
+                messagebox.showerror(
+                    "Error",
+                    "No se pudo descargar el vídeo.\n\n"
+                    "Posibles causas:\n"
+                    "• El vídeo requiere autenticación\n"
+                    "• La URL de streaming ha cambiado\n"
+                    "• El vídeo usa DRM o HLS protegido")
+        except Exception as exc:
+            self._status("❌  Error en la descarga")
+            messagebox.showerror("Error", str(exc))
+        finally:
+            self.pbar.stop()
+            self.pbar.configure(mode="indeterminate", value=0)
+            self._busy = False
+
+    # ── EducaMadrid Mediateca — inicio ────────────────────────────────────────
     def _educa_start(self):
         if self._busy:
             return
@@ -468,45 +645,18 @@ class DescargadorApp:
                                    "Introduce la URL y selecciona una carpeta.")
             return
 
-        # Validación básica de URL de EducaMadrid
-        if "educa.madrid.org" not in url and "educa2.madrid.org" not in url:
+        if "educa.madrid.org" not in url:
             if not messagebox.askyesno(
                     "URL inusual",
                     "La URL no parece ser de EducaMadrid.\n¿Continuar igualmente?"):
                 return
 
         folder = os.path.normpath(folder)
-        cal    = self.educa_format.get()
-
-        if cal == "mejor":
-            fmt_str = "best"
-        elif cal == "720p":
-            fmt_str = "bestvideo[height<=720]+bestaudio/best[height<=720]/best"
-        else:  # 480p
-            fmt_str = "bestvideo[height<=480]+bestaudio/best[height<=480]/best"
-
-        ydl_opts = {
-            'outtmpl':         os.path.join(folder, '%(title)s.%(ext)s'),
-            'format':          fmt_str,
-            'ffmpeg_location': RUTA_FFMPEG,
-            'progress_hooks':  [self._progress_hook],
-            'merge_output_format': 'mp4',
-            # Cabeceras que imitan al navegador (Kaltura puede requerir Referer)
-            'http_headers': {
-                'Referer': 'https://mediateca.educa.madrid.org/',
-                'User-Agent': (
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                    'AppleWebKit/537.36 (KHTML, like Gecko) '
-                    'Chrome/124.0.0.0 Safari/537.36'
-                ),
-            },
-        }
-
         self._busy = True
-        self._status(f"Iniciando descarga EducaMadrid ({cal})…")
+        self._status("Iniciando descarga EducaMadrid…")
         threading.Thread(
-            target=self._run_download,
-            args=(ydl_opts, url, folder, self.educa_open_folder.get()),
+            target=self._educa_run,
+            args=(url, folder, self.educa_open_folder.get()),
             daemon=True
         ).start()
 
