@@ -38,7 +38,8 @@ error_log.txt
 # API keys y configuración local — NO subir al repositorio
 config.ini
 
-# Carpeta de resúmenes generados y de ghostscript
+# Carpeta de resúmenes generados, de ghostscript y de Poppler
 Resumenes/
 gs/
+bin/
 
