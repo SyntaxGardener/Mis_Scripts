@@ -457,6 +457,7 @@ class App(tk.Tk):
         self.title("PDF Multimedia Embedder  v2.0")
         self.resizable(True, True)
         self._current_page = 0
+        self._last_loaded_page = -1   # página actualmente renderizada en la vista previa
         self._setup_style()
         self._build_ui()
         self._position_window()
@@ -546,15 +547,18 @@ class App(tk.Tk):
         self._total_pages = 0
         ttk.Button(pf, text="◀", width=2,
                    command=self._prev_page).pack(side="left")
-        # Campo editable: escribe el número y pulsa Enter para saltar
+        # Campo editable: escribe el número y pulsa Enter o "Ir →" para saltar
         self._page_entry = ttk.Entry(pf, textvariable=self.page_var,
                                      width=5, justify="center")
         self._page_entry.pack(side="left", padx=2)
-        self._page_entry.bind("<Return>",   lambda e: self._on_page_changed())
-        self._page_entry.bind("<FocusOut>", lambda e: self._on_page_changed())
+        self._page_entry.bind("<Return>", lambda e: self._on_page_changed())
+        # FocusOut NO recarga — evita llamadas innecesarias a poppler al
+        # hacer clic en otros campos de la interfaz.
         self._total_label = tk.Label(pf, text="/ —", bg=C["BG"], fg=C["DIM"],
                                      font=("Segoe UI", 10))
         self._total_label.pack(side="left")
+        ttk.Button(pf, text="Ir →", width=5,
+                   command=self._on_page_changed).pack(side="left", padx=(4, 0))
         ttk.Button(pf, text="▶", width=2,
                    command=self._next_page).pack(side="left", padx=(2, 0))
 
@@ -666,15 +670,22 @@ class App(tk.Tk):
             self._on_page_changed()
 
     def _on_page_changed(self):
-        # Clampar valor introducido manualmente
+        # Leer y sanear el valor del campo
         try:
             p = self.page_var.get()
         except Exception:
             p = 0
-        p = max(0, min(p, self._total_pages - 1) if self._total_pages > 0 else p)
+        if self._total_pages > 0:
+            p = max(0, min(p, self._total_pages - 1))
         self.page_var.set(p)
+
+        # Evitar recargar poppler si ya estamos en esa página
+        if p == self._last_loaded_page:
+            return
+
         path = self.pdf_in_var.get().strip()
         if os.path.isfile(path):
+            self._last_loaded_page = p
             self._load_preview(path, p)
 
     def _on_pdf_selected(self):
@@ -693,6 +704,7 @@ class App(tk.Tk):
             self._total_label.config(text="/ —")
 
         self.page_var.set(0)
+        self._last_loaded_page = -1
 
         # Sugerir nombre de salida
         if not self.pdf_out_var.get().strip():
@@ -756,6 +768,7 @@ class App(tk.Tk):
 
             # ── Encadenar: el PDF de salida pasa a ser la nueva entrada ──
             self.pdf_in_var.set(pdf_out)
+            self._last_loaded_page = -1
             try:
                 from pypdf import PdfReader
                 self._total_pages = len(PdfReader(pdf_out).pages)
