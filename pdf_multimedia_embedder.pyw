@@ -327,14 +327,16 @@ def embed_html(pdf_in, html_out, items):
             name       = Path(media_file).name
             icon       = "♪" if _is_audio(media_file) else "▶"
             # El placeholder es un botón que llama a openPlayer(idx)
+            import html as _html
+            safe_name = _html.escape(name, quote=True)
             overlays += (
                 f'<button class="ph" '
                 f'style="left:{left_pct:.3f}%;top:{top_pct:.3f}%;'
                 f'width:{width_pct:.3f}%;height:{height_pct:.3f}%;" '
                 f'onclick="openPlayer({mid})" '
-                f'title="{name}">'
+                f'title="{safe_name}">'
                 f'<span class="ph-icon">{icon}</span>'
-                f'<span class="ph-name">{name}</span>'
+                f'<span class="ph-name">{safe_name}</span>'
                 f'<span class="ph-hint">Clic para reproducir</span>'
                 f'</button>'
             )
@@ -350,7 +352,7 @@ def embed_html(pdf_in, html_out, items):
     media_desc = f"{n_media} elemento{'s' if n_media != 1 else ''} multimedia"
 
     # ── Serializar la tabla de medias como JSON para el script ───────────
-    media_json = json.dumps(media_index, ensure_ascii=False)
+    media_json = json.dumps(media_index, ensure_ascii=True)
 
     # ── CSS + JS del panel flotante ──────────────────────────────────────
     style = """
@@ -446,7 +448,10 @@ audio#panel-media{flex:none;background:#0f1a2e;height:54px}
   font-size:18px;cursor:pointer;line-height:1;padding:2px 4px;
   border-radius:4px;
 }
-
+#panel-dur{font-size:11px;font-weight:400;color:#e94560;
+  background:rgba(233,69,96,.12);border:1px solid rgba(233,69,96,.35);
+  border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:middle;
+  white-space:nowrap}
 """
 
     script = f"""
@@ -454,7 +459,8 @@ const MEDIA = {media_json};
 
 const overlay   = document.getElementById('overlay');
 const panel     = document.getElementById('panel');
-const panelTitle= document.getElementById('panel-title');
+const panelTitle= document.getElementById('panel-name');
+const panelDur  = document.getElementById('panel-dur');
 const mediaEl   = document.getElementById('panel-media');
 const btnPlay   = document.getElementById('btn-play');
 const btnPause  = document.getElementById('btn-pause');
@@ -479,6 +485,7 @@ function openPlayer(idx) {{
   el.src  = m.src;
   el.type = m.mime;
   panelTitle.textContent = m.name;
+  panelDur.textContent = '';
   overlay.classList.add('visible');
   el.play().catch(()=>{{}});
   // Reconectar botones al nuevo elemento
@@ -498,6 +505,14 @@ function _bindButtons() {{
   btnPlay.onclick  = () => el.play();
   btnPause.onclick = () => el.pause();
   btnStop.onclick  = () => {{ el.pause(); el.currentTime = 0; }};
+  el.onloadedmetadata = () => {{
+    if (!isFinite(el.duration)) return;
+    const s = Math.floor(el.duration);
+    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    panelDur.textContent = h>0
+      ? h+'h '+String(m).padStart(2,'0')+'m '+String(sec).padStart(2,'0')+'s'
+      : m>0 ? m+'m '+String(sec).padStart(2,'0')+'s' : sec+'s';
+  }};
   document.getElementById('btn-fs').onclick = () => {{
     const target = document.getElementById('panel-media');
     const req = target.requestFullscreen
@@ -533,7 +548,7 @@ document.addEventListener('keydown', e => {{ if (e.key === 'Escape') closePlayer
 <div id="overlay">
   <div id="panel">
     <button id="btn-x" title="Cerrar">&#x2715;</button>
-    <div id="panel-title">&hellip;</div>
+    <div id="panel-title"><span id="panel-name">&hellip;</span> <span id="panel-dur"></span></div>
     <audio id="panel-media" style="width:100%;background:#0f1a2e;height:54px;border-radius:6px"></audio>
     <div id="ctrl-bar">
       <button class="ctrl-btn" id="btn-play">&#9654; Play</button>
@@ -551,6 +566,278 @@ document.addEventListener('keydown', e => {{ if (e.key === 'Escape') closePlayer
 
     with open(html_out, "w", encoding="utf-8") as f:
         f.write(html)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Modo D — HTML ligero + archivos multimedia en carpeta _media/
+#  (ideal para pizarras digitales y dispositivos con poca RAM)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def embed_html_linked(pdf_in, html_out, items):
+    """
+    Genera un .html ligero que referencia los multimedia por ruta relativa.
+    Los archivos se copian en  <nombre_html>_media/  junto al HTML.
+
+    items : lista de tuplas  (page_num, rect, media_file)
+    """
+    import io, json, shutil, html as _html_mod
+    from pathlib import Path
+    from pypdf import PdfReader
+
+    if not items:
+        raise ValueError("La lista de multimedia está vacía.")
+
+    html_out  = Path(html_out)
+    media_dir = html_out.parent / (html_out.stem + "_media")
+    media_dir.mkdir(exist_ok=True)
+
+    # ── Dimensiones PDF ──────────────────────────────────────────────────
+    reader = PdfReader(pdf_in)
+    page_dims = [(float(pg.mediabox.width), float(pg.mediabox.height))
+                 for pg in reader.pages]
+
+    # ── Renderizar páginas ───────────────────────────────────────────────
+    try:
+        from pdf2image import convert_from_path
+    except ImportError:
+        raise ImportError("pdf2image no está instalado.\nEjecuta:  pip install pdf2image")
+
+    import sys as _sys, subprocess as _sp, base64
+    if _sys.platform == "win32":
+        _orig = _sp.Popen
+        class _NW(_orig):
+            def __init__(self, *a, **kw):
+                kw.setdefault("creationflags", 0)
+                kw["creationflags"] |= _sp.CREATE_NO_WINDOW
+                super().__init__(*a, **kw)
+        _sp.Popen = _NW
+    try:
+        pages_pil = convert_from_path(pdf_in, dpi=120, poppler_path=POPPLER_PATH)
+    finally:
+        if _sys.platform == "win32":
+            _sp.Popen = _orig
+
+    # Guardar páginas como PNG en _media/
+    pages_src = []
+    for i, img in enumerate(pages_pil):
+        png_path = media_dir / f"page_{i+1}.png"
+        img.save(png_path, format="PNG")
+        pages_src.append(f"{html_out.stem}_media/page_{i+1}.png")
+
+    # ── Copiar multimedia a _media/ ──────────────────────────────────────
+    copied = {}   # media_file → nombre en _media/
+    counters = {}
+    for (_, __, media_file) in items:
+        if media_file in copied:
+            continue
+        dest_name = Path(media_file).name
+        dest = media_dir / dest_name
+        # Evitar colisiones de nombre
+        if dest.exists() and dest.resolve() != Path(media_file).resolve():
+            stem, suf = Path(dest_name).stem, Path(dest_name).suffix
+            n = counters.get(dest_name, 1)
+            dest_name = f"{stem}_{n}{suf}"
+            counters[dest_name] = n + 1
+            dest = media_dir / dest_name
+        if Path(media_file).resolve() != dest.resolve():
+            shutil.copy2(media_file, dest)
+        copied[media_file] = dest_name
+
+    # ── Tabla de medias (sin base64 — solo ruta relativa) ────────────────
+    media_index = []
+    media_id_map = {}
+    for (_, __, media_file) in items:
+        if media_file not in media_id_map:
+            media_id_map[media_file] = len(media_index)
+            rel = f"{html_out.stem}_media/{copied[media_file]}"
+            media_index.append({
+                "src":   rel,
+                "mime":  _mime(media_file),
+                "audio": _is_audio(media_file),
+                "name":  Path(media_file).name,
+            })
+    media_json = json.dumps(media_index, ensure_ascii=True)
+
+    # ── Agrupar ítems por página ─────────────────────────────────────────
+    from collections import defaultdict
+    items_by_page = defaultdict(list)
+    for (page_num, rect, media_file) in items:
+        items_by_page[page_num].append((rect, media_file))
+
+    # ── Construir bloques de página ──────────────────────────────────────
+    blocks = []
+    for i, img_src in enumerate(pages_src):
+        pdf_w, pdf_h = page_dims[i] if i < len(page_dims) else (595, 842)
+        overlays = ""
+        for (rect, media_file) in items_by_page.get(i, []):
+            x1, y1, x2, y2 = rect
+            left_pct   = x1 / pdf_w * 100
+            top_pct    = (pdf_h - y2) / pdf_h * 100
+            width_pct  = (x2 - x1) / pdf_w * 100
+            height_pct = (y2 - y1) / pdf_h * 100
+            mid        = media_id_map[media_file]
+            name       = Path(media_file).name
+            icon       = "\u266a" if _is_audio(media_file) else "\u25b6"
+            safe_name  = _html_mod.escape(name, quote=True)
+            overlays += (
+                f'<button class="ph" '
+                f'style="left:{left_pct:.3f}%;top:{top_pct:.3f}%;'
+                f'width:{width_pct:.3f}%;height:{height_pct:.3f}%;" '
+                f'onclick="openPlayer({mid})" '
+                f'title="{safe_name}">'
+                f'<span class="ph-icon">{icon}</span>'
+                f'<span class="ph-name">{safe_name}</span>'
+                f'<span class="ph-hint">Clic para reproducir</span>'
+                f'</button>'
+            )
+        blocks.append(
+            f'<div class="page-wrap">'
+            f'<img src="{img_src}" style="width:100%;display:block;" alt="P\u00e1gina {i+1}">'
+            f'{overlays}</div>'
+        )
+
+    pdf_stem   = Path(pdf_in).stem
+    n_media    = len(items)
+    media_desc = f"{n_media} elemento{'s' if n_media != 1 else ''} multimedia"
+
+    # ── Reutilizar el mismo CSS/JS/HTML que Modo C ───────────────────────
+    # (copiamos style y script de embed_html — misma estructura de panel)
+    style = """
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#2a2d3e;padding:20px 12px;font-family:'Segoe UI',sans-serif}
+.hdr{text-align:center;color:#9aa0b8;font-size:12px;margin-bottom:16px}
+img{box-shadow:0 4px 20px rgba(0,0,0,.5)}
+.page-wrap{position:relative;max-width:900px;margin:0 auto 20px}
+.ph{position:absolute;background:rgba(15,52,96,0.88);border:2px solid #e94560;
+  border-radius:8px;cursor:pointer;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:4px;padding:6px 4px;
+  overflow:hidden;transition:background .15s,border-color .15s,transform .1s;color:#fff}
+.ph:hover{background:rgba(15,52,96,1);border-color:#ff7b8a;transform:scale(1.03)}
+.ph-icon{font-size:clamp(14px,3.5cqw,30px);line-height:1}
+.ph-name{font-size:clamp(7px,1.4cqw,12px);opacity:.85;
+  max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ph-hint{font-size:clamp(6px,1.1cqw,10px);opacity:.55;font-style:italic}
+#overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);
+  z-index:1000;align-items:center;justify-content:center}
+#overlay.visible{display:flex}
+#panel{background:#1a1c2e;border:2px solid #e94560;border-radius:12px;
+  padding:14px;width:98vw;height:98vh;display:flex;flex-direction:column;
+  gap:8px;box-shadow:0 8px 40px rgba(0,0,0,.7);position:relative}
+#panel-title{color:#c8cfe8;font-size:13px;font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:28px;flex:none}
+#panel-name{display:inline}
+#panel-media{width:100%;flex:1 1 0;min-height:0;border-radius:6px;
+  background:#000;object-fit:contain;display:block}
+audio#panel-media{flex:none;background:#0f1a2e;height:54px}
+#ctrl-bar{display:flex;gap:8px;align-items:center}
+.ctrl-btn{background:#2a2d3e;border:1px solid #3a3d5e;color:#c8cfe8;
+  border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer;transition:background .12s}
+.ctrl-btn:hover{background:#3a3d5e}
+.ctrl-btn.fs-btn{background:#1a2e1a;border-color:#4caf50;color:#a5d6a7;font-size:15px;padding:6px 10px}
+.ctrl-btn.fs-btn:hover{background:#2a3e2a}
+.ctrl-btn.close-btn{margin-left:auto;background:#3a0f18;border-color:#e94560;color:#ff8a98}
+.ctrl-btn.close-btn:hover{background:#5a1525}
+#btn-x{position:absolute;top:10px;right:12px;background:none;border:none;
+  color:#9aa0b8;font-size:18px;cursor:pointer;line-height:1;padding:2px 4px;border-radius:4px}
+#btn-x:hover{color:#ff8a98;background:rgba(233,69,96,.15)}
+#panel-dur{font-size:11px;font-weight:400;color:#e94560;
+  background:rgba(233,69,96,.12);border:1px solid rgba(233,69,96,.35);
+  border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:middle;white-space:nowrap}
+"""
+
+    script = f"""
+const MEDIA = {media_json};
+const overlay   = document.getElementById('overlay');
+const panelTitle= document.getElementById('panel-name');
+const panelDur  = document.getElementById('panel-dur');
+const mediaEl   = document.getElementById('panel-media');
+const btnPlay   = document.getElementById('btn-play');
+const btnPause  = document.getElementById('btn-pause');
+const btnStop   = document.getElementById('btn-stop');
+function openPlayer(idx) {{
+  const m = MEDIA[idx];
+  mediaEl.pause && mediaEl.pause();
+  mediaEl.removeAttribute('src');
+  const tag = m.audio ? 'audio' : 'video';
+  if (mediaEl.tagName.toLowerCase() !== tag) {{
+    const neo = document.createElement(tag);
+    neo.id = 'panel-media';
+    if (!m.audio) {{ neo.style.cssText='width:100%;flex:1 1 0;min-height:0;border-radius:6px;background:#000;object-fit:contain;display:block'; }}
+    else {{ neo.style.cssText='width:100%;flex:none;background:#0f1a2e;height:54px;border-radius:6px'; }}
+    mediaEl.replaceWith(neo);
+  }}
+  const el = document.getElementById('panel-media');
+  el.src  = m.src;
+  el.type = m.mime;
+  panelTitle.textContent = m.name;
+  panelDur.textContent = '';
+  overlay.classList.add('visible');
+  el.play().catch(()=>{{}});
+  _bindButtons();
+}}
+function closePlayer() {{
+  const el = document.getElementById('panel-media');
+  el.pause && el.pause();
+  el.currentTime = 0;
+  el.removeAttribute('src');
+  overlay.classList.remove('visible');
+}}
+function _bindButtons() {{
+  const el = document.getElementById('panel-media');
+  btnPlay.onclick  = () => el.play();
+  btnPause.onclick = () => el.pause();
+  btnStop.onclick  = () => {{ el.pause(); el.currentTime = 0; }};
+  el.onloadedmetadata = () => {{
+    if (!isFinite(el.duration)) return;
+    const s=Math.floor(el.duration), h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60;
+    panelDur.textContent = h>0 ? h+'h '+String(m).padStart(2,'0')+'m '+String(sec).padStart(2,'0')+'s'
+                         : m>0 ? m+'m '+String(sec).padStart(2,'0')+'s' : sec+'s';
+  }};
+  document.getElementById('btn-fs').onclick = () => {{
+    const t = document.getElementById('panel-media');
+    (t.requestFullscreen||t.webkitRequestFullscreen||t.mozRequestFullScreen||t.msRequestFullscreen).call(t);
+  }};
+}}
+_bindButtons();
+document.getElementById('btn-close').onclick = closePlayer;
+document.getElementById('btn-x').onclick     = closePlayer;
+overlay.addEventListener('click', e => {{ if (e.target===overlay) closePlayer(); }});
+document.addEventListener('keydown', e => {{ if (e.key==='Escape') closePlayer(); }});
+"""
+
+    html_content = (
+        '<!DOCTYPE html>\n<html lang="es">\n<head>\n'
+        '<meta charset="UTF-8">\n'
+        '<meta name="viewport" content="width=device-width,initial-scale=1.0">\n'
+        f'<title>{pdf_stem}</title>\n'
+        f'<style>{style}</style>\n'
+        '</head>\n<body>\n'
+        f'<div class="hdr">&#128196; {pdf_stem} &nbsp;&middot;&nbsp; '
+        f'{media_desc} &nbsp;&middot;&nbsp; '
+        'PDF Multimedia Embedder &mdash; Modo D</div>\n'
+        + "".join(blocks)
+        + '''
+<div id="overlay">
+  <div id="panel">
+    <button id="btn-x" title="Cerrar">&#x2715;</button>
+    <div id="panel-title"><span id="panel-name">&hellip;</span><span id="panel-dur"></span></div>
+    <audio id="panel-media" style="width:100%;flex:none;background:#0f1a2e;height:54px;border-radius:6px"></audio>
+    <div id="ctrl-bar">
+      <button class="ctrl-btn" id="btn-play">&#9654; Play</button>
+      <button class="ctrl-btn" id="btn-pause">&#9646;&#9646; Pausa</button>
+      <button class="ctrl-btn" id="btn-stop">&#9632; Detener</button>
+      <button class="ctrl-btn fs-btn" id="btn-fs" title="Pantalla completa">&#x26F6; Pantalla completa</button>
+      <button class="ctrl-btn close-btn" id="btn-close">&#x2715; Cerrar</button>
+    </div>
+  </div>
+</div>
+'''
+        + f'<script>{script}</script>\n'
+        + "</body>\n</html>"
+    )
+
+    with open(html_out, "w", encoding="utf-8") as f:
+        f.write(html_content)
 
 
 def _draw_placeholder(c, x1, y1, x2, y2, label, is_audio):
@@ -796,6 +1083,7 @@ class App(tk.Tk):
         self._current_page = 0
         self._last_loaded_page = -1
         self._html_items = []   # lista acumulada Modo C: [(page, rect, media), ...]
+        self._html_d_items = []  # lista acumulada Modo D
         self._real_items = []   # lista acumulada Modo A: [(page, rect, media), ...]
         self._setup_style()
         self._build_ui()
@@ -924,6 +1212,8 @@ class App(tk.Tk):
              "Acrobat, SumatraPDF — requiere PDF + multimedia en la misma carpeta"),
             ("html", "Modo C — HTML autocontenido",
              "Un solo .html · funciona en cualquier navegador sin internet"),
+            ("html_linked", "Modo D — HTML ligero + carpeta media",
+             "HTML pequeño + archivos en carpeta · ideal para pizarras digitales y dispositivos con poca RAM"),
         ]:
             f = tk.Frame(left, bg=C["CARD"], padx=8)
             f.pack(fill="x", pady=2, ipady=5)
@@ -1008,6 +1298,41 @@ class App(tk.Tk):
 
         # Ocultar panel hasta que se seleccione Modo C
         self._html_panel.pack_forget()
+
+
+        # ── Panel Modo D: lista acumulada ─────────────────────────────────
+        self._html_d_panel = ttk.Frame(left)
+        self._html_d_panel.pack(fill="x")
+
+        self._section(self._html_d_panel, "Multimedia añadido  (Modo D)")
+        lf_d = ttk.Frame(self._html_d_panel)
+        lf_d.pack(fill="x", pady=(2, 0))
+
+        self._html_d_listbox = tk.Listbox(
+            lf_d, height=4, bg=C["ENTRY"], fg=C["FG"],
+            selectbackground=C["SEL"], font=("Courier New", 8),
+            relief="flat", borderwidth=1, highlightthickness=0
+        )
+        self._html_d_listbox.pack(side="left", fill="x", expand=True)
+        sb_d = ttk.Scrollbar(lf_d, orient="vertical",
+                             command=self._html_d_listbox.yview)
+        sb_d.pack(side="left", fill="y")
+        self._html_d_listbox.config(yscrollcommand=sb_d.set)
+
+        btn_row_d = ttk.Frame(self._html_d_panel)
+        btn_row_d.pack(fill="x", pady=(4, 0))
+        ttk.Button(btn_row_d, text="➕  Añadir a lista",
+                   command=self._add_html_d_item).pack(side="left")
+        ttk.Button(btn_row_d, text="🗑  Limpiar lista",
+                   command=self._clear_html_d_items).pack(side="left", padx=(4, 0))
+        ttk.Button(btn_row_d, text="✖  Eliminar seleccionado",
+                   command=self._delete_html_d_item).pack(side="left", padx=(4, 0))
+
+        ttk.Button(self._html_d_panel, text="⚡  Generar HTML ligero",
+                   style="Accent.TButton",
+                   command=self._run).pack(fill="x", pady=(8, 2))
+
+        self._html_d_panel.pack_forget()
 
         tk.Frame(left, height=1, bg=C["CARD"]).pack(fill="x", pady=(10, 6))
 
@@ -1177,9 +1502,56 @@ class App(tk.Tk):
         self.preview._label_coords.config(text="Arrastra para marcar la zona")
         self.status_var.set(f"Ítem eliminado. Quedan {len(self._html_items)} en lista.")
 
+
+    # ── Helpers Modo D ───────────────────────────────────────────────────
+
+    def _add_html_d_item(self):
+        pdf_in = self.pdf_in_var.get().strip()
+        media  = self.media_var.get().strip()
+        page   = self.page_var.get()
+        rect   = self.preview.get_rect()
+        errors = []
+        if not pdf_in or not os.path.isfile(pdf_in):
+            errors.append("Selecciona un PDF de entrada válido.")
+        if not media or not os.path.isfile(media):
+            errors.append("Selecciona un archivo multimedia válido.")
+        if rect is None:
+            errors.append("Marca la zona de inserción en la vista previa.")
+        if errors:
+            messagebox.showerror("Campos incompletos", "\n".join(errors))
+            return
+        self._html_d_items.append((page, rect, media))
+        self._html_d_listbox.insert("end", f"Pág.{page+1}  {Path(media).name}")
+        self.preview._rect_pdf = None
+        if self.preview._rect_id:
+            self.preview.canvas.delete(self.preview._rect_id)
+            self.preview._rect_id = None
+        self.preview._label_coords.config(text="Arrastra para marcar la zona")
+        self.status_var.set(f"Añadido: Pág.{page+1} — {Path(media).name}  ({len(self._html_d_items)} en lista)")
+
+    def _clear_html_d_items(self):
+        self._html_d_items.clear()
+        self._html_d_listbox.delete(0, "end")
+        self.status_var.set("Lista de Modo D vaciada.")
+
+    def _delete_html_d_item(self):
+        sel = self._html_d_listbox.curselection()
+        if not sel:
+            messagebox.showinfo("Sin selección", "Selecciona un ítem de la lista para eliminarlo.")
+            return
+        idx = sel[0]
+        self._html_d_items.pop(idx)
+        self._html_d_listbox.delete(idx)
+        self.preview._rect_pdf = None
+        if self.preview._rect_id:
+            self.preview.canvas.delete(self.preview._rect_id)
+            self.preview._rect_id = None
+        self.preview._label_coords.config(text="Arrastra para marcar la zona")
+        self.status_var.set(f"Ítem eliminado. Quedan {len(self._html_d_items)} en lista.")
+
     def _browse_out(self):
         """Diálogo de salida adaptado al modo seleccionado."""
-        if self.mode_var.get() == "html":
+        if self.mode_var.get() in ("html", "html_linked"):
             ftypes = [("HTML", "*.html"), ("Todos", "*.*")]
             ext    = ".html"
         else:
@@ -1198,14 +1570,22 @@ class App(tk.Tk):
         if mode == "real":
             self._real_panel.pack(fill="x")
             self._html_panel.pack_forget()
+            self._html_d_panel.pack_forget()
             self._run_btn.pack_forget()
         elif mode == "html":
             self._html_panel.pack(fill="x")
             self._real_panel.pack_forget()
+            self._html_d_panel.pack_forget()
+            self._run_btn.pack_forget()
+        elif mode == "html_linked":
+            self._html_d_panel.pack(fill="x")
+            self._real_panel.pack_forget()
+            self._html_panel.pack_forget()
             self._run_btn.pack_forget()
         else:  # link — Modo B: botón simple visible, sin panel de lista
             self._real_panel.pack_forget()
             self._html_panel.pack_forget()
+            self._html_d_panel.pack_forget()
             self._run_btn.pack(side="right")
 
         # Ajustar extensión del archivo de salida
@@ -1213,7 +1593,7 @@ class App(tk.Tk):
         if not out:
             return
         p = Path(out)
-        if mode == "html":
+        if mode in ("html", "html_linked"):
             if p.suffix.lower() != ".html":
                 self.pdf_out_var.set(str(p.with_suffix(".html")))
         else:
@@ -1257,9 +1637,11 @@ class App(tk.Tk):
         if not os.path.isfile(path):
             return
 
-        # Al cambiar el PDF de entrada, resetear ambas listas acumuladas
+        # Al cambiar el PDF de entrada, resetear todas las listas acumuladas
         self._html_items.clear()
         self._html_listbox.delete(0, "end")
+        self._html_d_items.clear()
+        self._html_d_listbox.delete(0, "end")
         self._real_items.clear()
         self._real_listbox.delete(0, "end")
 
@@ -1278,7 +1660,7 @@ class App(tk.Tk):
         # Sugerir nombre de salida
         if not self.pdf_out_var.get().strip():
             p    = Path(path)
-            ext  = ".html" if self.mode_var.get() == "html" else ".pdf"
+            ext  = ".html" if self.mode_var.get() in ("html", "html_linked") else ".pdf"
             sugg = p.parent / (p.stem + "_con_multimedia" + ext)
             self.pdf_out_var.set(str(sugg))
 
@@ -1328,6 +1710,12 @@ class App(tk.Tk):
                     "La lista del Modo C está vacía.\n"
                     "Usa el botón '➕ Añadir a lista' para ir añadiendo cada multimedia."
                 )
+        elif mode == "html_linked":
+            if not self._html_d_items:
+                errors.append(
+                    "La lista del Modo D está vacía.\n"
+                    "Usa el botón '➕ Añadir a lista' para ir añadiendo cada multimedia."
+                )
         else:  # link — flujo simple: necesita multimedia y zona marcada
             media = self.media_var.get().strip()
             rect  = self.preview.get_rect()
@@ -1369,6 +1757,18 @@ class App(tk.Tk):
                         "Un único archivo con todo embebido.\n"
                         "Ábrelo con cualquier navegador (Chrome, Edge, Firefox…)\n"
                         "sin internet, sin plugins, sin instalaciones.")
+                messagebox.showinfo("¡Listo!", info)
+
+            elif mode == "html_linked":
+                embed_html_linked(pdf_in, pdf_out, self._html_d_items)
+                media_folder = Path(pdf_out).stem + "_media"
+                name = Path(pdf_out).name
+                self.status_var.set(f"✓  Guardado: {name}")
+                info = (f"HTML guardado:\n{pdf_out}\n\n"
+                        f"✅  Modo D — {len(self._html_d_items)} elemento(s) enlazado(s)\n"
+                        f"Los multimedia están en la carpeta: {media_folder}\n\n"
+                        "⚠ Mueve SIEMPRE el HTML y la carpeta juntos.\n"
+                        "Funciona en cualquier navegador, incluso en pizarras digitales.")
                 messagebox.showinfo("¡Listo!", info)
 
             else:  # link
