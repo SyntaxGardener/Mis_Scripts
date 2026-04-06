@@ -47,91 +47,95 @@ def _is_audio(path):
 #  Modo A — Launch + miniatura (Adobe Acrobat/Reader)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def embed_real(pdf_in, media_file, pdf_out, page_num=0, rect=(50, 650, 300, 750),
-               thumbnail_path=None):
+def embed_real(pdf_in, pdf_out, items, thumbnail_path=None):
     """
-    Igual que el Modo B pero con acción /Launch en lugar de URI.
-    Dibuja la miniatura/placeholder visual Y añade la acción Launch para Acrobat.
+    Modo A — incrusta TODOS los multimedia en una unica pasada.
+
+    items : lista de tuplas (page_num, rect, media_file)
+            donde rect = (x1, y1, x2, y2) en puntos PDF (origen abajo-izq.)
+
+    Al procesar todos los items en un unico PdfWriter antes de escribir,
+    se evita el problema de que add_attachment sobreescriba adjuntos previos.
     """
-    import shutil, tempfile
+    import json, tempfile
     from pypdf import PdfReader, PdfWriter
     from pypdf.generic import (
         ArrayObject, DictionaryObject, NameObject, NumberObject,
-        BooleanObject, create_string_object,
+        create_string_object,
     )
     from reportlab.pdfgen import canvas as rl_canvas
 
-    # Copiar multimedia junto al PDF de salida
-    pdf_out_dir = Path(pdf_out).parent
-    media_dest  = pdf_out_dir / Path(media_file).name
-    if Path(media_file).resolve() != media_dest.resolve():
-        shutil.copy2(media_file, media_dest)
-    filename = media_dest.name
+    if not items:
+        raise ValueError("La lista de multimedia esta vacia.")
 
     reader = PdfReader(pdf_in)
     writer = PdfWriter()
     for p in reader.pages:
         writer.add_page(p)
 
-    # --- Overlay visual (igual que Modo B) ---
-    orig_page = reader.pages[page_num]
-    pw = float(orig_page.mediabox.width)
-    ph = float(orig_page.mediabox.height)
+    added_files = set()   # para no adjuntar dos veces el mismo archivo
 
-    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
-    tmp.close()
+    for (page_num, rect, media_file) in items:
+        filename = Path(media_file).name
+        pw = float(reader.pages[page_num].mediabox.width)
+        ph = float(reader.pages[page_num].mediabox.height)
 
-    c = rl_canvas.Canvas(tmp.name, pagesize=(pw, ph))
-    x1, y1, x2, y2 = rect
-    label = ("▶  " if not _is_audio(media_file) else "♪  ") + Path(media_file).name
-
-    if thumbnail_path and os.path.isfile(thumbnail_path):
-        try:
-            c.drawImage(thumbnail_path, x1, y1, width=x2-x1, height=y2-y1,
-                        preserveAspectRatio=True, mask="auto")
-        except Exception:
+        # -- Overlay visual (placeholder / miniatura) ----------------------
+        tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+        tmp.close()
+        c = rl_canvas.Canvas(tmp.name, pagesize=(pw, ph))
+        x1, y1, x2, y2 = rect
+        label = ("  " if not _is_audio(media_file) else "  ") + filename
+        if thumbnail_path and os.path.isfile(thumbnail_path):
+            try:
+                c.drawImage(thumbnail_path, x1, y1, width=x2-x1, height=y2-y1,
+                            preserveAspectRatio=True, mask="auto")
+            except Exception:
+                _draw_placeholder(c, x1, y1, x2, y2, label, _is_audio(media_file))
+        else:
             _draw_placeholder(c, x1, y1, x2, y2, label, _is_audio(media_file))
-    else:
-        _draw_placeholder(c, x1, y1, x2, y2, label, _is_audio(media_file))
-    c.save()
+        c.save()
+        from pypdf import PdfReader as PR2
+        ov = PR2(tmp.name)
+        writer.pages[page_num].merge_page(ov.pages[0])
+        os.unlink(tmp.name)
 
-    from pypdf import PdfReader as PR2
-    ov = PR2(tmp.name)
-    writer.pages[page_num].merge_page(ov.pages[0])
-    os.unlink(tmp.name)
+        # -- Adjuntar el archivo (solo una vez por nombre) -----------------
+        if filename not in added_files:
+            with open(media_file, "rb") as f:
+                media_data = f.read()
+            writer.add_attachment(filename, media_data)
+            added_files.add(filename)
 
-    # --- Acción Launch ---
-    fs = DictionaryObject({
-        NameObject("/Type"): NameObject("/Filespec"),
-        NameObject("/F"):    create_string_object(filename),
-        NameObject("/UF"):   create_string_object(filename),
-    })
-    fs_ref = writer._add_object(fs)
+        # -- Accion JavaScript: extraer a temp y abrir con reproductor -----
+        js_code = (
+            f'var f = {json.dumps(filename)};\n'
+            f'this.exportDataObject({{cName: f, nLaunch: 2}});'
+        )
+        js_action = DictionaryObject({
+            NameObject("/Type"): NameObject("/Action"),
+            NameObject("/S"):    NameObject("/JavaScript"),
+            NameObject("/JS"):   create_string_object(js_code),
+        })
+        js_ref = writer._add_object(js_action)
 
-    launch_action = DictionaryObject({
-        NameObject("/Type"):      NameObject("/Action"),
-        NameObject("/S"):         NameObject("/Launch"),
-        NameObject("/F"):         fs_ref,
-        NameObject("/NewWindow"): BooleanObject(True),
-    })
-    action_ref = writer._add_object(launch_action)
+        # -- Anotacion /Link sobre el placeholder --------------------------
+        annot = DictionaryObject({
+            NameObject("/Type"):    NameObject("/Annot"),
+            NameObject("/Subtype"): NameObject("/Link"),
+            NameObject("/Rect"):    ArrayObject([
+                NumberObject(x1), NumberObject(y1),
+                NumberObject(x2), NumberObject(y2),
+            ]),
+            NameObject("/Border"): ArrayObject([NumberObject(0)] * 3),
+            NameObject("/A"):       js_ref,
+        })
+        ann_ref = writer._add_object(annot)
 
-    annot = DictionaryObject({
-        NameObject("/Type"):    NameObject("/Annot"),
-        NameObject("/Subtype"): NameObject("/Link"),
-        NameObject("/Rect"):    ArrayObject([
-            NumberObject(x1), NumberObject(y1),
-            NumberObject(x2), NumberObject(y2),
-        ]),
-        NameObject("/Border"): ArrayObject([NumberObject(0)] * 3),
-        NameObject("/A"):       action_ref,
-    })
-    ann_ref = writer._add_object(annot)
-
-    page = writer.pages[page_num]
-    if "/Annots" not in page:
-        page[NameObject("/Annots")] = ArrayObject()
-    page[NameObject("/Annots")].append(ann_ref)
+        page = writer.pages[page_num]
+        if "/Annots" not in page:
+            page[NameObject("/Annots")] = ArrayObject()
+        page[NameObject("/Annots")].append(ann_ref)
 
     with open(pdf_out, "wb") as out:
         writer.write(out)
@@ -183,15 +187,19 @@ def embed_link(pdf_in, media_file, pdf_out, page_num=0,
     writer.pages[page_num].merge_page(ov.pages[0])
     os.unlink(tmp.name)
 
-    # --- Anotación URI con ruta relativa ---
+    # --- Anotación /Launch con ruta relativa ---
+    # Usamos /Launch en lugar de /URI porque:
+    #   · /URI con file:// está bloqueado por Chrome/Edge por política de seguridad.
+    #   · /Launch con nombre relativo funciona en Acrobat y SumatraPDF,
+    #     que buscan el archivo en la misma carpeta que el PDF.
     import shutil
-    pdf_out_dir  = Path(pdf_out).parent
-    media_dest   = pdf_out_dir / Path(media_file).name
+    pdf_out_dir = Path(pdf_out).parent
+    media_dest  = pdf_out_dir / Path(media_file).name
     if Path(media_file).resolve() != media_dest.resolve():
         shutil.copy2(media_file, media_dest)
-    # URI relativa: solo el nombre del archivo (misma carpeta que el PDF)
-    from urllib.parse import quote
-    rel_uri = quote(media_dest.name, safe="")
+
+    rel_name = Path(media_file).name   # nombre relativo — el visor resuelve la ruta
+
     link = DictionaryObject({
         NameObject("/Type"):    NameObject("/Annot"),
         NameObject("/Subtype"): NameObject("/Link"),
@@ -201,8 +209,8 @@ def embed_link(pdf_in, media_file, pdf_out, page_num=0,
         ]),
         NameObject("/Border"): ArrayObject([NumberObject(0)] * 3),
         NameObject("/A"): DictionaryObject({
-            NameObject("/S"):   NameObject("/URI"),
-            NameObject("/URI"): create_string_object(rel_uri),
+            NameObject("/S"): NameObject("/Launch"),
+            NameObject("/F"): create_string_object(rel_name),
         }),
     })
     ann_ref = writer._add_object(link)
@@ -214,6 +222,335 @@ def embed_link(pdf_in, media_file, pdf_out, page_num=0,
 
     with open(pdf_out, "wb") as out:
         writer.write(out)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Modo C — HTML autocontenido (todo base64, sin internet ni instalaciones)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def embed_html(pdf_in, html_out, items):
+    """
+    Genera un único .html autocontenido con todas las páginas del PDF y
+    todos los multimedia embebidos en base64.
+
+    items : lista de tuplas  (page_num, rect, media_file)
+            donde rect = (x1, y1, x2, y2) en puntos PDF (origen abajo-izq.)
+
+    Modo de reproducción: clic en placeholder → panel flotante central.
+    Solo un reproductor abierto a la vez; cerrar devuelve la vista normal.
+    """
+    import base64, io, json
+    from pathlib import Path
+    from pypdf import PdfReader
+
+    if not items:
+        raise ValueError("La lista de multimedia está vacía.")
+
+    # ── Dimensiones de cada página del PDF ──────────────────────────────
+    reader = PdfReader(pdf_in)
+    page_dims = []
+    for pg in reader.pages:
+        page_dims.append((float(pg.mediabox.width), float(pg.mediabox.height)))
+
+    # ── Renderizar todas las páginas ─────────────────────────────────────
+    try:
+        from pdf2image import convert_from_path
+    except ImportError:
+        raise ImportError("pdf2image no está instalado.\n"
+                          "Ejecuta:  pip install pdf2image")
+
+    import sys as _sys, subprocess as _sp
+    if _sys.platform == "win32":
+        _orig = _sp.Popen
+        class _NW(_orig):
+            def __init__(self, *a, **kw):
+                kw.setdefault("creationflags", 0)
+                kw["creationflags"] |= _sp.CREATE_NO_WINDOW
+                super().__init__(*a, **kw)
+        _sp.Popen = _NW
+    try:
+        pages_pil = convert_from_path(pdf_in, dpi=120, poppler_path=POPPLER_PATH)
+    finally:
+        if _sys.platform == "win32":
+            _sp.Popen = _orig
+
+    # ── Páginas → base64 PNG ─────────────────────────────────────────────
+    pages_b64 = []
+    for img in pages_pil:
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        pages_b64.append(base64.b64encode(buf.getvalue()).decode())
+
+    # ── Pre-codificar cada archivo multimedia ────────────────────────────
+    # (un mismo archivo puede aparecer en varios ítems; lo cacheamos)
+    _media_cache = {}
+    def _get_data_uri(media_file):
+        if media_file not in _media_cache:
+            with open(media_file, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            _media_cache[media_file] = f"data:{_mime(media_file)};base64,{b64}"
+        return _media_cache[media_file]
+
+    # ── Construir tabla de medias indexada (id → data_uri, mime, es_audio) ──
+    # Cada placeholder guarda solo el índice; el JS resuelve el resto.
+    media_index = []   # lista de dicts {src, mime, audio, name}
+    media_id_map = {}  # media_file → índice en media_index
+
+    for (_, __, media_file) in items:
+        if media_file not in media_id_map:
+            media_id_map[media_file] = len(media_index)
+            media_index.append({
+                "src":   _get_data_uri(media_file),
+                "mime":  _mime(media_file),
+                "audio": _is_audio(media_file),
+                "name":  Path(media_file).name,
+            })
+
+    # ── Agrupar ítems por página ─────────────────────────────────────────
+    from collections import defaultdict
+    items_by_page = defaultdict(list)
+    for (page_num, rect, media_file) in items:
+        items_by_page[page_num].append((rect, media_file))
+
+    # ── Construir bloques de página ──────────────────────────────────────
+    blocks = []
+    for i, b64 in enumerate(pages_b64):
+        pdf_w, pdf_h = page_dims[i] if i < len(page_dims) else (595, 842)
+        overlays = ""
+        for (rect, media_file) in items_by_page.get(i, []):
+            x1, y1, x2, y2 = rect
+            left_pct   = x1 / pdf_w * 100
+            top_pct    = (pdf_h - y2) / pdf_h * 100
+            width_pct  = (x2 - x1) / pdf_w * 100
+            height_pct = (y2 - y1) / pdf_h * 100
+            mid        = media_id_map[media_file]
+            name       = Path(media_file).name
+            icon       = "♪" if _is_audio(media_file) else "▶"
+            # El placeholder es un botón que llama a openPlayer(idx)
+            overlays += (
+                f'<button class="ph" '
+                f'style="left:{left_pct:.3f}%;top:{top_pct:.3f}%;'
+                f'width:{width_pct:.3f}%;height:{height_pct:.3f}%;" '
+                f'onclick="openPlayer({mid})" '
+                f'title="{name}">'
+                f'<span class="ph-icon">{icon}</span>'
+                f'<span class="ph-name">{name}</span>'
+                f'<span class="ph-hint">Clic para reproducir</span>'
+                f'</button>'
+            )
+        blocks.append(
+            f'<div class="page-wrap">'
+            f'<img src="data:image/png;base64,{b64}" '
+            f'style="width:100%;display:block;" alt="Página {i+1}">'
+            f'{overlays}</div>'
+        )
+
+    pdf_stem   = Path(pdf_in).stem
+    n_media    = len(items)
+    media_desc = f"{n_media} elemento{'s' if n_media != 1 else ''} multimedia"
+
+    # ── Serializar la tabla de medias como JSON para el script ───────────
+    media_json = json.dumps(media_index, ensure_ascii=False)
+
+    # ── CSS + JS del panel flotante ──────────────────────────────────────
+    style = """
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#2a2d3e;padding:20px 12px;font-family:'Segoe UI',sans-serif}
+.hdr{text-align:center;color:#9aa0b8;font-size:12px;margin-bottom:16px}
+img{box-shadow:0 4px 20px rgba(0,0,0,.5)}
+
+/* ── Placeholder ── */
+.page-wrap{position:relative;max-width:900px;margin:0 auto 20px}
+.ph{
+  position:absolute;
+  background:rgba(15,52,96,0.88);
+  border:2px solid #e94560;
+  border-radius:8px;
+  cursor:pointer;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:4px;
+  padding:6px 4px;
+  overflow:hidden;
+  transition:background .15s,border-color .15s,transform .1s;
+  color:#fff;
+}
+.ph:hover{background:rgba(15,52,96,1);border-color:#ff7b8a;transform:scale(1.03)}
+.ph-icon{font-size:clamp(14px,3.5cqw,30px);line-height:1}
+.ph-name{font-size:clamp(7px,1.4cqw,12px);opacity:.85;
+         max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ph-hint{font-size:clamp(6px,1.1cqw,10px);opacity:.55;font-style:italic}
+
+/* ── Overlay oscuro ── */
+#overlay{
+  display:none;
+  position:fixed;inset:0;
+  background:rgba(0,0,0,.65);
+  z-index:1000;
+  align-items:center;justify-content:center;
+}
+#overlay.visible{display:flex}
+
+/* ── Panel flotante ── */
+#panel{
+  background:#1a1c2e;
+  border:2px solid #e94560;
+  border-radius:12px;
+  padding:14px;
+  width:98vw;
+  height:98vh;
+  display:flex;flex-direction:column;
+  gap:8px;
+  box-shadow:0 8px 40px rgba(0,0,0,.7);
+  position:relative;
+}
+#panel-title{
+  color:#c8cfe8;
+  font-size:13px;
+  font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  padding-right:28px;
+  flex:none;
+}
+#panel-media{
+  width:100%;
+  flex:1 1 0;
+  min-height:0;
+  border-radius:6px;
+  background:#000;
+  object-fit:contain;
+  display:block;
+}
+audio#panel-media{flex:none;background:#0f1a2e;height:54px}
+.ctrl-btn.fs-btn{background:#1a2e1a;border-color:#4caf50;color:#a5d6a7;font-size:15px;padding:6px 10px}
+.ctrl-btn.fs-btn:hover{background:#2a3e2a}
+
+/* ── Barra de controles personalizados ── */
+#ctrl-bar{
+  display:flex;gap:8px;align-items:center;
+}
+.ctrl-btn{
+  background:#2a2d3e;border:1px solid #3a3d5e;
+  color:#c8cfe8;border-radius:6px;
+  padding:6px 14px;font-size:12px;cursor:pointer;
+  transition:background .12s;
+}
+.ctrl-btn:hover{background:#3a3d5e}
+.ctrl-btn.close-btn{margin-left:auto;background:#3a0f18;border-color:#e94560;color:#ff8a98}
+.ctrl-btn.close-btn:hover{background:#5a1525}
+
+/* ── Botón X en esquina ── */
+#btn-x{
+  position:absolute;top:10px;right:12px;
+  background:none;border:none;color:#9aa0b8;
+  font-size:18px;cursor:pointer;line-height:1;padding:2px 4px;
+  border-radius:4px;
+}
+
+"""
+
+    script = f"""
+const MEDIA = {media_json};
+
+const overlay   = document.getElementById('overlay');
+const panel     = document.getElementById('panel');
+const panelTitle= document.getElementById('panel-title');
+const mediaEl   = document.getElementById('panel-media');
+const btnPlay   = document.getElementById('btn-play');
+const btnPause  = document.getElementById('btn-pause');
+const btnStop   = document.getElementById('btn-stop');
+
+function openPlayer(idx) {{
+  const m = MEDIA[idx];
+  // Limpiar source previo
+  mediaEl.pause && mediaEl.pause();
+  mediaEl.removeAttribute('src');
+  // Reemplazar el elemento por el tipo correcto si cambia (audio<->video)
+  const tag = m.audio ? 'audio' : 'video';
+  if (mediaEl.tagName.toLowerCase() !== tag) {{
+    const neo = document.createElement(tag);
+    neo.id = 'panel-media';
+    neo.style.cssText = mediaEl.style.cssText;
+    if (!m.audio) {{ neo.style.background='#000'; neo.style.maxHeight='60vh'; }}
+    else {{ neo.style.background='#0f1a2e'; neo.style.height='54px'; }}
+    mediaEl.replaceWith(neo);
+  }}
+  const el = document.getElementById('panel-media');
+  el.src  = m.src;
+  el.type = m.mime;
+  panelTitle.textContent = m.name;
+  overlay.classList.add('visible');
+  el.play().catch(()=>{{}});
+  // Reconectar botones al nuevo elemento
+  _bindButtons();
+}}
+
+function closePlayer() {{
+  const el = document.getElementById('panel-media');
+  el.pause && el.pause();
+  el.currentTime = 0;
+  el.removeAttribute('src');
+  overlay.classList.remove('visible');
+}}
+
+function _bindButtons() {{
+  const el = document.getElementById('panel-media');
+  btnPlay.onclick  = () => el.play();
+  btnPause.onclick = () => el.pause();
+  btnStop.onclick  = () => {{ el.pause(); el.currentTime = 0; }};
+  document.getElementById('btn-fs').onclick = () => {{
+    const target = document.getElementById('panel-media');
+    const req = target.requestFullscreen
+               || target.webkitRequestFullscreen
+               || target.mozRequestFullScreen
+               || target.msRequestFullscreen;
+    if (req) req.call(target);
+  }};
+}}
+_bindButtons();
+
+document.getElementById('btn-close').onclick = closePlayer;
+document.getElementById('btn-x').onclick     = closePlayer;
+// Clic en el fondo oscuro cierra el panel
+overlay.addEventListener('click', e => {{ if (e.target === overlay) closePlayer(); }});
+// Tecla Escape
+document.addEventListener('keydown', e => {{ if (e.key === 'Escape') closePlayer(); }});
+"""
+
+    html = (
+        '<!DOCTYPE html>\n<html lang="es">\n<head>\n'
+        '<meta charset="UTF-8">\n'
+        '<meta name="viewport" content="width=device-width,initial-scale=1.0">\n'
+        f'<title>{pdf_stem}</title>\n'
+        f'<style>{style}</style>\n'
+        '</head>\n<body>\n'
+        f'<div class="hdr">&#128196; {pdf_stem} &nbsp;&middot;&nbsp; '
+        f'{media_desc} &nbsp;&middot;&nbsp; '
+        'PDF Multimedia Embedder &mdash; Modo C</div>\n'
+        + "".join(blocks)
+        # ── Panel flotante (único en el DOM) ──────────────────────────────
+        + """
+<div id="overlay">
+  <div id="panel">
+    <button id="btn-x" title="Cerrar">&#x2715;</button>
+    <div id="panel-title">&hellip;</div>
+    <audio id="panel-media" style="width:100%;background:#0f1a2e;height:54px;border-radius:6px"></audio>
+    <div id="ctrl-bar">
+      <button class="ctrl-btn" id="btn-play">&#9654; Play</button>
+      <button class="ctrl-btn" id="btn-pause">&#9646;&#9646; Pausa</button>
+      <button class="ctrl-btn" id="btn-stop">&#9632; Detener</button>
+      <button class="ctrl-btn fs-btn" id="btn-fs" title="Pantalla completa">&#x26F6; Pantalla completa</button>
+      <button class="ctrl-btn close-btn" id="btn-close">&#x2715; Cerrar</button>
+    </div>
+  </div>
+</div>
+"""
+        + f'<script>{script}</script>\n'
+        + "</body>\n</html>"
+    )
+
+    with open(html_out, "w", encoding="utf-8") as f:
+        f.write(html)
 
 
 def _draw_placeholder(c, x1, y1, x2, y2, label, is_audio):
@@ -454,10 +791,12 @@ class App(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        self.title("PDF Multimedia Embedder  v2.0")
+        self.title("PDF Multimedia Embedder  v3.0")
         self.resizable(True, True)
         self._current_page = 0
-        self._last_loaded_page = -1   # página actualmente renderizada en la vista previa
+        self._last_loaded_page = -1
+        self._html_items = []   # lista acumulada Modo C: [(page, rect, media), ...]
+        self._real_items = []   # lista acumulada Modo A: [(page, rect, media), ...]
         self._setup_style()
         self._build_ui()
         self._position_window()
@@ -527,7 +866,7 @@ class App(tk.Tk):
         # Cabecera
         ttk.Label(left, text="🎬  PDF Multimedia Embedder",
                   style="Head.TLabel").pack(anchor="w")
-        ttk.Label(left, text="Incrusta audio y vídeo en documentos PDF  ·  v2.0",
+        ttk.Label(left, text="Incrusta audio y vídeo en documentos PDF  ·  v3.0",
                   style="Sub.TLabel").pack(anchor="w", pady=(1, 10))
 
         tk.Frame(left, height=1, bg=C["CARD"]).pack(fill="x", pady=(0, 10))
@@ -567,20 +906,24 @@ class App(tk.Tk):
                        MEDIA_TYPES, save=False)
 
         self.pdf_out_var = tk.StringVar()
-        self._file_row(left, "PDF de salida", self.pdf_out_var,
-                       [("PDF", "*.pdf")], save=True)
+        self._file_row(left, "Archivo de salida", self.pdf_out_var,
+                       [("PDF", "*.pdf")], save=True,
+                       browse_cmd=self._browse_out)
 
         tk.Frame(left, height=1, bg=C["CARD"]).pack(fill="x", pady=(10, 6))
 
         # ── Modo ─────────────────────────────────────────────────────────
         self._section(left, "Modo de incrustación")
 
-        self.mode_var = tk.StringVar(value="link")
+        self.mode_var = tk.StringVar(value="real")
+        self.mode_var.trace_add("write", lambda *_: self._on_mode_changed())
         for val, title, desc in [
+            ("real", "Modo A — PDF autosuficiente (Acrobat)",
+             "Audio/vídeo incrustado dentro del PDF · clic → abre con reproductor del sistema"),
             ("link", "Modo B — Enlace URI",
-             "Chrome, SumatraPDF y otros visores modernos"),
-            ("real", "Modo A — Launch (Acrobat)",
-             "Adobe Acrobat / Reader — abre con app del sistema"),
+             "Acrobat, SumatraPDF — requiere PDF + multimedia en la misma carpeta"),
+            ("html", "Modo C — HTML autocontenido",
+             "Un solo .html · funciona en cualquier navegador sin internet"),
         ]:
             f = tk.Frame(left, bg=C["CARD"], padx=8)
             f.pack(fill="x", pady=2, ipady=5)
@@ -596,20 +939,93 @@ class App(tk.Tk):
 
         tk.Frame(left, height=1, bg=C["CARD"]).pack(fill="x", pady=(10, 6))
 
+        # ── Panel Modo A: lista acumulada ─────────────────────────────────
+        self._real_panel = ttk.Frame(left)
+        self._real_panel.pack(fill="x")
+
+        self._section(self._real_panel, "Multimedia añadido  (Modo A)")
+        lf_a = ttk.Frame(self._real_panel)
+        lf_a.pack(fill="x", pady=(2, 0))
+
+        self._real_listbox = tk.Listbox(
+            lf_a, height=4, bg=C["ENTRY"], fg=C["FG"],
+            selectbackground=C["SEL"], font=("Courier New", 8),
+            relief="flat", borderwidth=1, highlightthickness=0
+        )
+        self._real_listbox.pack(side="left", fill="x", expand=True)
+        sb_a = ttk.Scrollbar(lf_a, orient="vertical",
+                             command=self._real_listbox.yview)
+        sb_a.pack(side="left", fill="y")
+        self._real_listbox.config(yscrollcommand=sb_a.set)
+
+        btn_row_a = ttk.Frame(self._real_panel)
+        btn_row_a.pack(fill="x", pady=(4, 0))
+        ttk.Button(btn_row_a, text="➕  Añadir a lista",
+                   command=self._add_real_item).pack(side="left")
+        ttk.Button(btn_row_a, text="🗑  Limpiar lista",
+                   command=self._clear_real_items).pack(side="left", padx=(4, 0))
+        ttk.Button(btn_row_a, text="✖  Eliminar seleccionado",
+                   command=self._delete_real_item).pack(side="left", padx=(4, 0))
+
+        ttk.Button(self._real_panel, text="⚡  Generar PDF",
+                   style="Accent.TButton",
+                   command=self._run).pack(fill="x", pady=(8, 2))
+
+        # Ocultar panel hasta que se seleccione Modo A
+        self._real_panel.pack_forget()
+
+        # ── Panel Modo C: lista acumulada ─────────────────────────────────
+        self._html_panel = ttk.Frame(left)
+        self._html_panel.pack(fill="x")
+
+        self._section(self._html_panel, "Multimedia añadido  (Modo C)")
+        lf = ttk.Frame(self._html_panel)
+        lf.pack(fill="x", pady=(2, 0))
+
+        self._html_listbox = tk.Listbox(
+            lf, height=4, bg=C["ENTRY"], fg=C["FG"],
+            selectbackground=C["SEL"], font=("Courier New", 8),
+            relief="flat", borderwidth=1, highlightthickness=0
+        )
+        self._html_listbox.pack(side="left", fill="x", expand=True)
+        sb = ttk.Scrollbar(lf, orient="vertical",
+                           command=self._html_listbox.yview)
+        sb.pack(side="left", fill="y")
+        self._html_listbox.config(yscrollcommand=sb.set)
+
+        btn_row = ttk.Frame(self._html_panel)
+        btn_row.pack(fill="x", pady=(4, 0))
+        ttk.Button(btn_row, text="➕  Añadir a lista",
+                   command=self._add_html_item).pack(side="left")
+        ttk.Button(btn_row, text="🗑  Limpiar lista",
+                   command=self._clear_html_items).pack(side="left", padx=(4, 0))
+        ttk.Button(btn_row, text="✖  Eliminar seleccionado",
+                   command=self._delete_html_item).pack(side="left", padx=(4, 0))
+
+        ttk.Button(self._html_panel, text="⚡  Generar HTML",
+                   style="Accent.TButton",
+                   command=self._run).pack(fill="x", pady=(8, 2))
+
+        # Ocultar panel hasta que se seleccione Modo C
+        self._html_panel.pack_forget()
+
+        tk.Frame(left, height=1, bg=C["CARD"]).pack(fill="x", pady=(10, 6))
+
         # ── Miniatura opcional ────────────────────────────────────────────
-        self._section(left, "Miniatura personalizada  (solo Modo B, opcional)")
+        self._section(left, "Miniatura personalizada  (solo Modos A y B, opcional)")
         self.thumb_var = tk.StringVar()
         self._file_row(left, "Imagen", self.thumb_var,
                        [("Imágenes", " ".join(IMAGE_EXT))], save=False)
 
         tk.Frame(left, height=1, bg=C["CARD"]).pack(fill="x", pady=(10, 8))
 
-        # ── Botón + estado ────────────────────────────────────────────────
+        # ── Botón Modo B + estado (para Modos A y C el botón está en su panel) ──
         bf = ttk.Frame(left)
         bf.pack(fill="x")
-        ttk.Button(bf, text="⚡  Incrustar ahora",
+        self._run_btn = ttk.Button(bf, text="⚡  Incrustar ahora",
                    style="Accent.TButton",
-                   command=self._run).pack(side="right")
+                   command=self._run)
+        self._run_btn.pack(side="right")
 
         self.status_var = tk.StringVar(value="Listo.")
         tk.Label(bf, textvariable=self.status_var,
@@ -623,6 +1039,9 @@ class App(tk.Tk):
         self.preview = PDFPreview(right)
         self.preview.pack(fill="both", expand=True)
 
+        # Aplicar estado inicial del modo seleccionado
+        self._on_mode_changed()
+
     # ── Sección helper ────────────────────────────────────────────────────
 
     def _section(self, parent, text):
@@ -632,7 +1051,7 @@ class App(tk.Tk):
                  font=("Segoe UI", 8, "bold")).pack(side="left")
 
     def _file_row(self, parent, label, var, ftypes, save=False,
-                  on_change=None):
+                  on_change=None, browse_cmd=None):
         row = ttk.Frame(parent)
         row.pack(fill="x", pady=3)
         ttk.Label(row, text=label, width=20, anchor="w").pack(side="left")
@@ -640,9 +1059,8 @@ class App(tk.Tk):
         e.pack(side="left", padx=(0, 6))
         if on_change:
             var.trace_add("write", lambda *_: on_change())
-        ttk.Button(row, text="…",
-                   command=lambda: self._browse(var, ftypes, save,
-                                                on_change)).pack(side="left")
+        cmd = browse_cmd if browse_cmd else lambda: self._browse(var, ftypes, save, on_change)
+        ttk.Button(row, text="…", command=cmd).pack(side="left")
 
     def _browse(self, var, ftypes, save, callback=None):
         if save:
@@ -656,6 +1074,151 @@ class App(tk.Tk):
             var.set(path)
             if callback:
                 callback()
+
+    # ── Helpers Modo A ───────────────────────────────────────────────────
+
+    def _add_real_item(self):
+        """Valida campos y añade el ítem actual a la lista del Modo A."""
+        pdf_in = self.pdf_in_var.get().strip()
+        media  = self.media_var.get().strip()
+        page   = self.page_var.get()
+        rect   = self.preview.get_rect()
+
+        errors = []
+        if not pdf_in or not os.path.isfile(pdf_in):
+            errors.append("Selecciona un PDF de entrada válido.")
+        if not media or not os.path.isfile(media):
+            errors.append("Selecciona un archivo multimedia válido.")
+        if rect is None:
+            errors.append("Marca la zona de inserción en la vista previa.")
+        if errors:
+            messagebox.showerror("Campos incompletos", "\n".join(errors))
+            return
+
+        self._real_items.append((page, rect, media))
+        self._real_listbox.insert("end", f"Pág.{page+1}  {Path(media).name}")
+        # Resetear zona marcada para la siguiente inserción
+        self.preview._rect_pdf = None
+        if self.preview._rect_id:
+            self.preview.canvas.delete(self.preview._rect_id)
+            self.preview._rect_id = None
+        self.preview._label_coords.config(text="Arrastra para marcar la zona")
+        self.status_var.set(f"Añadido: Pág.{page+1} — {Path(media).name}  ({len(self._real_items)} en lista)")
+
+    def _clear_real_items(self):
+        self._real_items.clear()
+        self._real_listbox.delete(0, "end")
+        self.status_var.set("Lista de Modo A vaciada.")
+
+    def _delete_real_item(self):
+        sel = self._real_listbox.curselection()
+        if not sel:
+            messagebox.showinfo("Sin selección", "Selecciona un ítem de la lista para eliminarlo.")
+            return
+        idx = sel[0]
+        self._real_items.pop(idx)
+        self._real_listbox.delete(idx)
+        # Resetear zona marcada
+        self.preview._rect_pdf = None
+        if self.preview._rect_id:
+            self.preview.canvas.delete(self.preview._rect_id)
+            self.preview._rect_id = None
+        self.preview._label_coords.config(text="Arrastra para marcar la zona")
+        self.status_var.set(f"Ítem eliminado. Quedan {len(self._real_items)} en lista.")
+
+    # ── Helpers Modo C ───────────────────────────────────────────────────
+
+    def _add_html_item(self):
+        """Valida campos y añade el ítem actual a la lista del Modo C."""
+        pdf_in = self.pdf_in_var.get().strip()
+        media  = self.media_var.get().strip()
+        page   = self.page_var.get()
+        rect   = self.preview.get_rect()
+
+        errors = []
+        if not pdf_in or not os.path.isfile(pdf_in):
+            errors.append("Selecciona un PDF de entrada válido.")
+        if not media or not os.path.isfile(media):
+            errors.append("Selecciona un archivo multimedia válido.")
+        if rect is None:
+            errors.append("Marca la zona de inserción en la vista previa.")
+        if errors:
+            messagebox.showerror("Campos incompletos", "\n".join(errors))
+            return
+
+        self._html_items.append((page, rect, media))
+        self._html_listbox.insert("end", f"Pág.{page+1}  {Path(media).name}")
+        # Resetear zona marcada
+        self.preview._rect_pdf = None
+        if self.preview._rect_id:
+            self.preview.canvas.delete(self.preview._rect_id)
+            self.preview._rect_id = None
+        self.preview._label_coords.config(text="Arrastra para marcar la zona")
+        self.status_var.set(f"Añadido: Pág.{page+1} — {Path(media).name}  ({len(self._html_items)} en lista)")
+
+    def _clear_html_items(self):
+        self._html_items.clear()
+        self._html_listbox.delete(0, "end")
+        self.status_var.set("Lista de Modo C vaciada.")
+
+    def _delete_html_item(self):
+        sel = self._html_listbox.curselection()
+        if not sel:
+            messagebox.showinfo("Sin selección", "Selecciona un ítem de la lista para eliminarlo.")
+            return
+        idx = sel[0]
+        self._html_items.pop(idx)
+        self._html_listbox.delete(idx)
+        # Resetear zona marcada
+        self.preview._rect_pdf = None
+        if self.preview._rect_id:
+            self.preview.canvas.delete(self.preview._rect_id)
+            self.preview._rect_id = None
+        self.preview._label_coords.config(text="Arrastra para marcar la zona")
+        self.status_var.set(f"Ítem eliminado. Quedan {len(self._html_items)} en lista.")
+
+    def _browse_out(self):
+        """Diálogo de salida adaptado al modo seleccionado."""
+        if self.mode_var.get() == "html":
+            ftypes = [("HTML", "*.html"), ("Todos", "*.*")]
+            ext    = ".html"
+        else:
+            ftypes = [("PDF", "*.pdf")]
+            ext    = ".pdf"
+        path = filedialog.asksaveasfilename(filetypes=ftypes,
+                                            defaultextension=ext)
+        if path:
+            self.pdf_out_var.set(path)
+
+    def _on_mode_changed(self):
+        """Al cambiar de modo: muestra/oculta paneles de lista y ajusta extensión."""
+        mode = self.mode_var.get()
+
+        # Mostrar/ocultar paneles de lista acumulada y botón Modo B
+        if mode == "real":
+            self._real_panel.pack(fill="x")
+            self._html_panel.pack_forget()
+            self._run_btn.pack_forget()
+        elif mode == "html":
+            self._html_panel.pack(fill="x")
+            self._real_panel.pack_forget()
+            self._run_btn.pack_forget()
+        else:  # link — Modo B: botón simple visible, sin panel de lista
+            self._real_panel.pack_forget()
+            self._html_panel.pack_forget()
+            self._run_btn.pack(side="right")
+
+        # Ajustar extensión del archivo de salida
+        out = self.pdf_out_var.get().strip()
+        if not out:
+            return
+        p = Path(out)
+        if mode == "html":
+            if p.suffix.lower() != ".html":
+                self.pdf_out_var.set(str(p.with_suffix(".html")))
+        else:
+            if p.suffix.lower() == ".html":
+                self.pdf_out_var.set(str(p.with_suffix(".pdf")))
 
     def _prev_page(self):
         p = self.page_var.get()
@@ -694,6 +1257,12 @@ class App(tk.Tk):
         if not os.path.isfile(path):
             return
 
+        # Al cambiar el PDF de entrada, resetear ambas listas acumuladas
+        self._html_items.clear()
+        self._html_listbox.delete(0, "end")
+        self._real_items.clear()
+        self._real_listbox.delete(0, "end")
+
         # Contar páginas totales
         try:
             from pypdf import PdfReader
@@ -709,7 +1278,8 @@ class App(tk.Tk):
         # Sugerir nombre de salida
         if not self.pdf_out_var.get().strip():
             p    = Path(path)
-            sugg = p.parent / (p.stem + "_con_multimedia" + p.suffix)
+            ext  = ".html" if self.mode_var.get() == "html" else ".pdf"
+            sugg = p.parent / (p.stem + "_con_multimedia" + ext)
             self.pdf_out_var.set(str(sugg))
 
         self._load_preview(path, self.page_var.get())
@@ -730,25 +1300,46 @@ class App(tk.Tk):
     # ── Acción principal ──────────────────────────────────────────────────
 
     def _run(self):
+        """
+        Modo A y C: genera el archivo final a partir de la lista acumulada.
+        Modo B: incrusta directamente el multimedia seleccionado (flujo simple).
+        """
         pdf_in  = self.pdf_in_var.get().strip()
-        media   = self.media_var.get().strip()
         pdf_out = self.pdf_out_var.get().strip()
         mode    = self.mode_var.get()
-        page    = self.page_var.get()
         thumb   = self.thumb_var.get().strip() or None
-        rect    = self.preview.get_rect()
 
+        # Validaciones comunes
         errors = []
-        if not pdf_in:                    errors.append("Selecciona un PDF de entrada.")
-        if not media:                     errors.append("Selecciona un archivo multimedia.")
-        if not pdf_out:                   errors.append("Indica dónde guardar el PDF de salida.")
-        if not os.path.isfile(pdf_in or ""): errors.append("El PDF de entrada no existe.")
-        if not os.path.isfile(media or ""): errors.append("El archivo multimedia no existe.")
-        if rect is None:
-            errors.append(
-                "Marca la zona de inserción en la vista previa\n"
-                "(arrastra el ratón sobre la página del PDF)."
-            )
+        if not pdf_in or not os.path.isfile(pdf_in):
+            errors.append("Selecciona un PDF de entrada válido.")
+        if not pdf_out:
+            errors.append("Indica dónde guardar el archivo de salida.")
+
+        if mode == "real":
+            if not self._real_items:
+                errors.append(
+                    "La lista del Modo A está vacía.\n"
+                    "Usa el botón '➕ Añadir a lista' para ir añadiendo cada multimedia."
+                )
+        elif mode == "html":
+            if not self._html_items:
+                errors.append(
+                    "La lista del Modo C está vacía.\n"
+                    "Usa el botón '➕ Añadir a lista' para ir añadiendo cada multimedia."
+                )
+        else:  # link — flujo simple: necesita multimedia y zona marcada
+            media = self.media_var.get().strip()
+            rect  = self.preview.get_rect()
+            page  = self.page_var.get()
+            if not media or not os.path.isfile(media):
+                errors.append("Selecciona un archivo multimedia.")
+            if rect is None:
+                errors.append(
+                    "Marca la zona de inserción en la vista previa\n"
+                    "(arrastra el ratón sobre la página del PDF)."
+                )
+
         if errors:
             messagebox.showerror("Campos incompletos", "\n".join(errors))
             return
@@ -758,35 +1349,49 @@ class App(tk.Tk):
 
         try:
             if mode == "real":
-                embed_real(pdf_in, media, pdf_out, page_num=page, rect=rect, thumbnail_path=thumb)
-            else:
+                embed_real(pdf_in, pdf_out, self._real_items, thumbnail_path=thumb)
+                name = Path(pdf_out).name
+                self.status_var.set(f"✓  Guardado: {name}")
+                info = (f"PDF guardado:\n{pdf_out}\n\n"
+                        f"✅  Modo A — {len(self._real_items)} elemento(s) incrustado(s)\n"
+                        "El multimedia está DENTRO del PDF. No necesitas archivos externos.\n\n"
+                        "Al hacer clic en Acrobat/Reader:\n"
+                        "• Puede aparecer «¿Abrir este archivo?» → pulsa Abrir.\n"
+                        "• Se abre con el reproductor predeterminado del sistema.")
+                messagebox.showinfo("¡Listo!", info)
+
+            elif mode == "html":
+                embed_html(pdf_in, pdf_out, self._html_items)
+                name = Path(pdf_out).name
+                self.status_var.set(f"✓  Guardado: {name}")
+                info = (f"HTML guardado:\n{pdf_out}\n\n"
+                        f"✅  Modo C — {len(self._html_items)} elemento(s) embebido(s)\n"
+                        "Un único archivo con todo embebido.\n"
+                        "Ábrelo con cualquier navegador (Chrome, Edge, Firefox…)\n"
+                        "sin internet, sin plugins, sin instalaciones.")
+                messagebox.showinfo("¡Listo!", info)
+
+            else:  # link
                 embed_link(pdf_in, media, pdf_out,
                            page_num=page, rect=rect, thumbnail_path=thumb)
-
-            name = Path(pdf_out).name
-            self.status_var.set(f"✓  Guardado: {name}")
-
-            # ── Encadenar: el PDF de salida pasa a ser la nueva entrada ──
-            self.pdf_in_var.set(pdf_out)
-            self._last_loaded_page = -1
-            try:
-                from pypdf import PdfReader
-                self._total_pages = len(PdfReader(pdf_out).pages)
-                self._total_label.config(text=f"/ {self._total_pages}")
-            except Exception:
-                pass
-
-            if mode == "real":
+                name = Path(pdf_out).name
+                self.status_var.set(f"✓  Guardado: {name}")
+                # Encadenar para poder añadir más multimedia al mismo PDF
+                self.pdf_in_var.set(pdf_out)
+                self._last_loaded_page = -1
+                try:
+                    from pypdf import PdfReader
+                    self._total_pages = len(PdfReader(pdf_out).pages)
+                    self._total_label.config(text=f"/ {self._total_pages}")
+                except Exception:
+                    pass
                 info = (f"PDF guardado:\n{pdf_out}\n\n"
-                        "✅  Modo A (Acrobat/Launch)\n"
+                        "✅  Modo B (Launch relativo)\n"
                         "El multimedia se ha copiado junto al PDF.\n"
-                        "Acrobat pedirá confirmación al hacer clic — acepta.")
-            else:
-                info = (f"PDF guardado:\n{pdf_out}\n\n"
-                        "✅  Modo B (URI)\n"
-                        "El multimedia se ha copiado junto al PDF.\n"
-                        "Funciona en Chrome y visores modernos.")
-            messagebox.showinfo("¡Listo!", info)
+                        "Funciona en Acrobat y SumatraPDF.\n"
+                        "⚠ PDF y multimedia deben permanecer en la misma carpeta.\n"
+                        "⚠ Chrome/Edge bloquean este tipo de enlace por seguridad.")
+                messagebox.showinfo("¡Listo!", info)
 
         except ImportError as e:
             self.status_var.set("Error: falta dependencia.")
