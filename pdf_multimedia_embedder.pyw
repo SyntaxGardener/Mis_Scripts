@@ -643,20 +643,26 @@ def embed_html_linked(pdf_in, html_out, items):
             shutil.copy2(media_file, dest)
         copied[media_file] = dest_name
 
-    # ── Tabla de medias (sin base64 — solo ruta relativa) ────────────────
+    # ── Tabla de medias (solo nombre de archivo en _media/) ──────────────
+    # El JS resolverá los nombres a blob: URLs tras seleccionar la carpeta.
     media_index = []
     media_id_map = {}
     for (_, __, media_file) in items:
         if media_file not in media_id_map:
             media_id_map[media_file] = len(media_index)
-            rel = f"{html_out.stem}_media/{copied[media_file]}"
             media_index.append({
-                "src":   rel,
+                "file":  copied[media_file],          # nombre dentro de _media/
                 "mime":  _mime(media_file),
                 "audio": _is_audio(media_file),
                 "name":  Path(media_file).name,
             })
     media_json = json.dumps(media_index, ensure_ascii=True)
+
+    # ── Lista de nombres de página (page_1.png … page_N.png) ────────────
+    page_files_json = json.dumps(
+        [f"page_{i+1}.png" for i in range(len(pages_pil))],
+        ensure_ascii=True,
+    )
 
     # ── Agrupar ítems por página ─────────────────────────────────────────
     from collections import defaultdict
@@ -664,9 +670,9 @@ def embed_html_linked(pdf_in, html_out, items):
     for (page_num, rect, media_file) in items:
         items_by_page[page_num].append((rect, media_file))
 
-    # ── Construir bloques de página ──────────────────────────────────────
+    # ── Construir bloques de página (sin src aún — el JS los rellena) ────
     blocks = []
-    for i, img_src in enumerate(pages_src):
+    for i in range(len(pages_pil)):
         pdf_w, pdf_h = page_dims[i] if i < len(page_dims) else (595, 842)
         overlays = ""
         for (rect, media_file) in items_by_page.get(i, []):
@@ -687,24 +693,48 @@ def embed_html_linked(pdf_in, html_out, items):
                 f'title="{safe_name}">'
                 f'<span class="ph-icon">{icon}</span>'
                 f'<span class="ph-name">{safe_name}</span>'
-                f'<span class="ph-hint">Clic para reproducir</span>'
+                f'<span class="ph-hint">Toca para reproducir</span>'
                 f'</button>'
             )
+        # data-page-index para que el JS inyecte el src correcto
         blocks.append(
             f'<div class="page-wrap">'
-            f'<img src="{img_src}" style="width:100%;display:block;" alt="P\u00e1gina {i+1}">'
+            f'<img data-page="{i}" style="width:100%;display:block;" alt="P\u00e1gina {i+1}">'
             f'{overlays}</div>'
         )
 
     pdf_stem   = Path(pdf_in).stem
+    media_folder = html_out.stem + "_media"
     n_media    = len(items)
     media_desc = f"{n_media} elemento{'s' if n_media != 1 else ''} multimedia"
 
-    # ── Reutilizar el mismo CSS/JS/HTML que Modo C ───────────────────────
-    # (copiamos style y script de embed_html — misma estructura de panel)
     style = """
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#2a2d3e;padding:20px 12px;font-family:'Segoe UI',sans-serif}
+body{background:#2a2d3e;font-family:'Segoe UI',sans-serif;overflow-x:hidden}
+/* ── Pantalla de bienvenida ── */
+#welcome{
+  min-height:100vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:20px;padding:32px 16px;
+}
+#welcome h1{color:#c8cfe8;font-size:22px;font-weight:700;text-align:center}
+#welcome p{color:#9aa0b8;font-size:13px;text-align:center;max-width:380px;line-height:1.6}
+#welcome .folder-name{
+  color:#e94560;font-weight:700;font-family:monospace;
+  background:rgba(233,69,96,.12);border:1px solid rgba(233,69,96,.35);
+  border-radius:6px;padding:4px 10px;font-size:14px;
+}
+#btn-pick{
+  background:#1a6bbf;border:none;color:#fff;
+  font-size:15px;font-weight:600;padding:14px 32px;
+  border-radius:10px;cursor:pointer;
+  box-shadow:0 4px 18px rgba(26,107,191,.45);
+  transition:background .15s,transform .1s;
+}
+#btn-pick:hover{background:#1558a0;transform:scale(1.03)}
+#welcome .hint{color:#636882;font-size:11px;text-align:center;max-width:340px;line-height:1.5}
+#err-msg{color:#ff8a98;font-size:12px;display:none;text-align:center;max-width:380px}
+/* ── Contenido principal ── */
+#main{display:none;padding:20px 12px}
 .hdr{text-align:center;color:#9aa0b8;font-size:12px;margin-bottom:16px}
 img{box-shadow:0 4px 20px rgba(0,0,0,.5)}
 .page-wrap{position:relative;max-width:900px;margin:0 auto 20px}
@@ -729,7 +759,7 @@ img{box-shadow:0 4px 20px rgba(0,0,0,.5)}
 #panel-media{width:100%;flex:1 1 0;min-height:0;border-radius:6px;
   background:#000;object-fit:contain;display:block}
 audio#panel-media{flex:none;background:#0f1a2e;height:54px}
-#ctrl-bar{display:flex;gap:8px;align-items:center}
+#ctrl-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .ctrl-btn{background:#2a2d3e;border:1px solid #3a3d5e;color:#c8cfe8;
   border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer;transition:background .12s}
 .ctrl-btn:hover{background:#3a3d5e}
@@ -745,79 +775,196 @@ audio#panel-media{flex:none;background:#0f1a2e;height:54px}
   border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:middle;white-space:nowrap}
 """
 
-    script = f"""
-const MEDIA = {media_json};
-const overlay   = document.getElementById('overlay');
-const panelTitle= document.getElementById('panel-name');
-const panelDur  = document.getElementById('panel-dur');
-const mediaEl   = document.getElementById('panel-media');
-const btnPlay   = document.getElementById('btn-play');
-const btnPause  = document.getElementById('btn-pause');
-const btnStop   = document.getElementById('btn-stop');
+    # ── Script principal (va en <head> — solo define funciones y datos) ──────
+    script_head = f"""
+const MEDIA       = {media_json};
+const PAGE_FILES  = {page_files_json};
+const FOLDER_NAME = {json.dumps(media_folder, ensure_ascii=True)};
+const blobMedia   = new Array(MEDIA.length).fill(null);
+
+// ── Plan A: DirectoryPicker ───────────────────────────────────────────────────
+async function _pickDir() {{
+  const errEl = document.getElementById('err-msg');
+  errEl.style.display = 'none';
+  try {{
+    const dir = await window.showDirectoryPicker({{ mode: 'read' }});
+    if (dir.name !== FOLDER_NAME) {{
+      errEl.textContent = '\u26a0 Carpeta inesperada: \u00ab' + dir.name +
+        '\u00bb (se esperaba \u00ab' + FOLDER_NAME + '\u00bb). Puede fallar.';
+      errEl.style.display = 'block';
+    }}
+    for (let i = 0; i < MEDIA.length; i++) {{
+      try {{
+        blobMedia[i] = URL.createObjectURL(await (await dir.getFileHandle(MEDIA[i].file)).getFile());
+      }} catch(e) {{ console.warn('No encontrado:', MEDIA[i].file); }}
+    }}
+    for (const img of document.querySelectorAll('img[data-page]')) {{
+      try {{
+        const idx = parseInt(img.dataset.page);
+        img.src = URL.createObjectURL(await (await dir.getFileHandle(PAGE_FILES[idx])).getFile());
+      }} catch(e) {{}}
+    }}
+    _showMain();
+  }} catch(e) {{
+    if (e.name !== 'AbortError') {{
+      errEl.textContent = 'Error: ' + e.message;
+      errEl.style.display = 'block';
+    }}
+  }}
+}}
+
+// ── Plan B: input[file] multiple ─────────────────────────────────────────────
+function _pickFiles(input) {{
+  const byName = {{}};
+  for (const f of input.files) byName[f.name] = f;
+  for (let i = 0; i < MEDIA.length; i++) {{
+    if (byName[MEDIA[i].file]) blobMedia[i] = URL.createObjectURL(byName[MEDIA[i].file]);
+  }}
+  for (const img of document.querySelectorAll('img[data-page]')) {{
+    const f = byName[PAGE_FILES[parseInt(img.dataset.page)]];
+    if (f) img.src = URL.createObjectURL(f);
+  }}
+  const missing = MEDIA.filter((_,i) => !blobMedia[i]).map(m => m.name);
+  const errEl = document.getElementById('err-msg');
+  if (missing.length) {{
+    errEl.textContent = '\u26a0 Archivos no encontrados: ' + missing.join(', ');
+    errEl.style.display = 'block';
+  }} else {{
+    errEl.style.display = 'none';
+  }}
+  _showMain();
+}}
+
+function _showMain() {{
+  document.getElementById('welcome').style.display = 'none';
+  document.getElementById('main').style.display = 'block';
+}}
+
+// ── Reproductor ───────────────────────────────────────────────────────────────
 function openPlayer(idx) {{
   const m = MEDIA[idx];
-  mediaEl.pause && mediaEl.pause();
-  mediaEl.removeAttribute('src');
+  if (!blobMedia[idx]) {{
+    alert('\u00abNo disponible\u00bb: ' + m.name + '\\nSelecciona los archivos primero.');
+    return;
+  }}
+  let el = document.getElementById('panel-media');
+  el.pause && el.pause(); el.removeAttribute('src');
   const tag = m.audio ? 'audio' : 'video';
-  if (mediaEl.tagName.toLowerCase() !== tag) {{
+  if (el.tagName.toLowerCase() !== tag) {{
     const neo = document.createElement(tag);
     neo.id = 'panel-media';
-    if (!m.audio) {{ neo.style.cssText='width:100%;flex:1 1 0;min-height:0;border-radius:6px;background:#000;object-fit:contain;display:block'; }}
-    else {{ neo.style.cssText='width:100%;flex:none;background:#0f1a2e;height:54px;border-radius:6px'; }}
-    mediaEl.replaceWith(neo);
+    neo.style.cssText = m.audio
+      ? 'width:100%;flex:none;background:#0f1a2e;height:54px;border-radius:6px'
+      : 'width:100%;flex:1 1 0;min-height:0;border-radius:6px;background:#000;object-fit:contain;display:block';
+    el.replaceWith(neo); el = document.getElementById('panel-media');
   }}
-  const el = document.getElementById('panel-media');
-  el.src  = m.src;
-  el.type = m.mime;
-  panelTitle.textContent = m.name;
-  panelDur.textContent = '';
-  overlay.classList.add('visible');
+  el.src = blobMedia[idx]; el.type = m.mime;
+  document.getElementById('panel-name').textContent = m.name;
+  document.getElementById('panel-dur').textContent  = '';
+  document.getElementById('overlay').classList.add('visible');
   el.play().catch(()=>{{}});
   _bindButtons();
 }}
 function closePlayer() {{
   const el = document.getElementById('panel-media');
-  el.pause && el.pause();
-  el.currentTime = 0;
-  el.removeAttribute('src');
-  overlay.classList.remove('visible');
+  el.pause && el.pause(); el.currentTime = 0; el.removeAttribute('src');
+  document.getElementById('overlay').classList.remove('visible');
 }}
 function _bindButtons() {{
-  const el = document.getElementById('panel-media');
-  btnPlay.onclick  = () => el.play();
-  btnPause.onclick = () => el.pause();
-  btnStop.onclick  = () => {{ el.pause(); el.currentTime = 0; }};
+  const el  = document.getElementById('panel-media');
+  const dur = document.getElementById('panel-dur');
+  document.getElementById('btn-play').onclick  = () => el.play();
+  document.getElementById('btn-pause').onclick = () => el.pause();
+  document.getElementById('btn-stop').onclick  = () => {{ el.pause(); el.currentTime=0; }};
+  document.getElementById('btn-fs').onclick    = () => {{
+    (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen).call(el);
+  }};
   el.onloadedmetadata = () => {{
     if (!isFinite(el.duration)) return;
-    const s=Math.floor(el.duration), h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60;
-    panelDur.textContent = h>0 ? h+'h '+String(m).padStart(2,'0')+'m '+String(sec).padStart(2,'0')+'s'
-                         : m>0 ? m+'m '+String(sec).padStart(2,'0')+'s' : sec+'s';
-  }};
-  document.getElementById('btn-fs').onclick = () => {{
-    const t = document.getElementById('panel-media');
-    (t.requestFullscreen||t.webkitRequestFullscreen||t.mozRequestFullScreen||t.msRequestFullscreen).call(t);
+    const s=Math.floor(el.duration), h=Math.floor(s/3600),
+          m=Math.floor((s%3600)/60), sec=s%60;
+    dur.textContent = h>0 ? h+'h '+String(m).padStart(2,'0')+'m '+String(sec).padStart(2,'0')+'s'
+                   : m>0 ? m+'m '+String(sec).padStart(2,'0')+'s' : sec+'s';
   }};
 }}
-_bindButtons();
-document.getElementById('btn-close').onclick = closePlayer;
-document.getElementById('btn-x').onclick     = closePlayer;
-overlay.addEventListener('click', e => {{ if (e.target===overlay) closePlayer(); }});
-document.addEventListener('keydown', e => {{ if (e.key==='Escape') closePlayer(); }});
 """
+
+    # ── Script de init — va al final del <body>, cuando el DOM ya existe ──────
+    script_init = """
+(function() {
+  var useDir = (typeof window.showDirectoryPicker === 'function');
+  var a = document.getElementById('ui-a');
+  var b = document.getElementById('ui-b');
+  if (useDir) {
+    a.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:16px';
+    b.style.display = 'none';
+  } else {
+    a.style.display = 'none';
+    b.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:16px';
+  }
+  document.getElementById('btn-close').onclick = closePlayer;
+  document.getElementById('btn-x').onclick     = closePlayer;
+  document.getElementById('overlay').addEventListener('click', function(e) {
+    if (e.target === document.getElementById('overlay')) closePlayer();
+  });
+  document.addEventListener('keydown', function(e) { if (e.key==='Escape') closePlayer(); });
+  _bindButtons();
+})();
+"""
+
+    welcome_block = f"""
+<div id="welcome">
+  <h1>&#128196; {_html_mod.escape(pdf_stem)}</h1>
+  <p>Para reproducir el multimedia, Chromium necesita acceder a los archivos.</p>
+
+  <div id="ui-a">
+    <p>Toca el bot\u00f3n y selecciona la carpeta
+       <span class="folder-name">&#128193; {_html_mod.escape(media_folder)}</span>
+       que est\u00e1 junto al HTML en el USB.</p>
+    <button onclick="_pickDir()">&#128193; Seleccionar carpeta</button>
+    <p class="hint">Solo hay que hacerlo una vez cada vez que se abre el archivo.</p>
+  </div>
+
+  <div id="ui-b">
+    <p>Selecciona <strong>todos los archivos</strong> dentro de la carpeta
+       <span class="folder-name">&#128193; {_html_mod.escape(media_folder)}</span></p>
+    <label style="display:inline-block;background:#1a6bbf;color:#fff;font-size:15px;
+                  font-weight:600;padding:14px 32px;border-radius:10px;cursor:pointer;
+                  box-shadow:0 4px 18px rgba(26,107,191,.45)">
+      &#128194; Seleccionar archivos
+      <input type="file" multiple onchange="_pickFiles(this)"
+             style="position:absolute;width:1px;height:1px;opacity:0">
+    </label>
+    <p class="hint">Entra en la carpeta <em>{_html_mod.escape(media_folder)}</em>,
+       selecciona todos los archivos (Ctrl+A o "Seleccionar todo") y confirma.<br>
+       Solo hay que hacerlo una vez por sesi\u00f3n.</p>
+  </div>
+
+  <p id="err-msg" style="color:#ff8a98;font-size:12px;display:none;text-align:center;max-width:380px"></p>
+</div>
+"""
+
+    main_block = (
+        '<div id="main" style="display:none;padding:20px 12px">\n'
+        f'<div class="hdr">&#128196; {_html_mod.escape(pdf_stem)}'
+        f' &nbsp;&middot;&nbsp; {media_desc}'
+        ' &nbsp;&middot;&nbsp; PDF Multimedia Embedder \u2014 Modo D</div>\n'
+        + "".join(blocks)
+        + '</div>\n'
+    )
 
     html_content = (
         '<!DOCTYPE html>\n<html lang="es">\n<head>\n'
         '<meta charset="UTF-8">\n'
         '<meta name="viewport" content="width=device-width,initial-scale=1.0">\n'
-        f'<title>{pdf_stem}</title>\n'
+        f'<title>{_html_mod.escape(pdf_stem)}</title>\n'
         f'<style>{style}</style>\n'
+        f'<script>{script_head}</script>\n'
         '</head>\n<body>\n'
-        f'<div class="hdr">&#128196; {pdf_stem} &nbsp;&middot;&nbsp; '
-        f'{media_desc} &nbsp;&middot;&nbsp; '
-        'PDF Multimedia Embedder &mdash; Modo D</div>\n'
-        + "".join(blocks)
+        + welcome_block
+        + main_block
         + '''
-<div id="overlay">
+<div id="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:1000;align-items:center;justify-content:center">
   <div id="panel">
     <button id="btn-x" title="Cerrar">&#x2715;</button>
     <div id="panel-title"><span id="panel-name">&hellip;</span><span id="panel-dur"></span></div>
@@ -826,13 +973,13 @@ document.addEventListener('keydown', e => {{ if (e.key==='Escape') closePlayer()
       <button class="ctrl-btn" id="btn-play">&#9654; Play</button>
       <button class="ctrl-btn" id="btn-pause">&#9646;&#9646; Pausa</button>
       <button class="ctrl-btn" id="btn-stop">&#9632; Detener</button>
-      <button class="ctrl-btn fs-btn" id="btn-fs" title="Pantalla completa">&#x26F6; Pantalla completa</button>
+      <button class="ctrl-btn fs-btn" id="btn-fs">&#x26F6; Pantalla completa</button>
       <button class="ctrl-btn close-btn" id="btn-close">&#x2715; Cerrar</button>
     </div>
   </div>
 </div>
 '''
-        + f'<script>{script}</script>\n'
+        + f'<script>{script_init}</script>\n'
         + "</body>\n</html>"
     )
 
