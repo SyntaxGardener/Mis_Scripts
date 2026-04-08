@@ -36,5 +36,8 @@ groq
 requests
 python-pptx
 pikepdf
-browser_cookie3
 pygame
+browser_cookie3
+cloudscraper
+selenium
+webdriver-manager
