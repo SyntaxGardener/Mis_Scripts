@@ -842,33 +842,31 @@ function _showMain() {{
 
 // ── Reproductor ───────────────────────────────────────────────────────────────
 function openPlayer(idx) {{
-  const m = MEDIA[idx];
-  if (!blobMedia[idx]) {{
-    alert('\u00abNo disponible\u00bb: ' + m.name + '\\nSelecciona los archivos primero.');
-    return;
-  }}
-  let el = document.getElementById('panel-media');
-  el.pause && el.pause(); el.removeAttribute('src');
-  const tag = m.audio ? 'audio' : 'video';
-  if (el.tagName.toLowerCase() !== tag) {{
-    const neo = document.createElement(tag);
-    neo.id = 'panel-media';
-    neo.style.cssText = m.audio
-      ? 'width:100%;flex:none;background:#0f1a2e;height:54px;border-radius:6px'
-      : 'width:100%;flex:1 1 0;min-height:0;border-radius:6px;background:#000;object-fit:contain;display:block';
-    el.replaceWith(neo); el = document.getElementById('panel-media');
-  }}
-  el.src = blobMedia[idx]; el.type = m.mime;
+  var m    = MEDIA[idx];
+  var blob = blobMedia[idx];
+  if (!blob) {{ alert('Archivo no cargado: ' + m.name); return; }}
+  var old = document.getElementById('panel-media');
+  if (old) {{ old.pause && old.pause(); old.src = ''; }}
+  var wrap = document.getElementById('media-wrap');
+  wrap.innerHTML = '';
+  var el = document.createElement(m.audio ? 'audio' : 'video');
+  el.id = 'panel-media';
+  el.style.cssText = m.audio
+    ? 'width:100%;background:#0f1a2e;height:54px;border-radius:6px;display:block'
+    : 'width:100%;height:100%;border-radius:6px;background:#000;object-fit:contain;display:block';
+  wrap.appendChild(el);
+  el.src  = blob;
+  el.type = m.mime;
   document.getElementById('panel-name').textContent = m.name;
   document.getElementById('panel-dur').textContent  = '';
-  document.getElementById('overlay').classList.add('visible');
-  el.play().catch(()=>{{}});
+  document.getElementById('overlay').style.display  = 'flex';
+  el.play().catch(function(){{}});
   _bindButtons();
 }}
 function closePlayer() {{
-  const el = document.getElementById('panel-media');
-  el.pause && el.pause(); el.currentTime = 0; el.removeAttribute('src');
-  document.getElementById('overlay').classList.remove('visible');
+  var el = document.getElementById('panel-media');
+  if (el) {{ el.pause && el.pause(); el.src = ''; }}
+  document.getElementById('overlay').style.display = 'none';
 }}
 function _bindButtons() {{
   const el  = document.getElementById('panel-media');
@@ -968,7 +966,9 @@ function _bindButtons() {{
   <div id="panel">
     <button id="btn-x" title="Cerrar">&#x2715;</button>
     <div id="panel-title"><span id="panel-name">&hellip;</span><span id="panel-dur"></span></div>
-    <audio id="panel-media" style="width:100%;flex:none;background:#0f1a2e;height:54px;border-radius:6px"></audio>
+    <div id="media-wrap" style="width:100%;flex:1 1 0;min-height:0;display:flex;align-items:center;justify-content:center">
+      <audio id="panel-media" style="width:100%;background:#0f1a2e;height:54px;border-radius:6px;display:block"></audio>
+    </div>
     <div id="ctrl-bar">
       <button class="ctrl-btn" id="btn-play">&#9654; Play</button>
       <button class="ctrl-btn" id="btn-pause">&#9646;&#9646; Pausa</button>
