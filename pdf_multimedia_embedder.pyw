@@ -535,7 +535,7 @@ document.addEventListener('keydown', e => {{ if (e.key === 'Escape') closePlayer
     html = (
         '<!DOCTYPE html>\n<html lang="es">\n<head>\n'
         '<meta charset="UTF-8">\n'
-        '<meta name="viewport" content="width=device-width,initial-scale=1.0">\n'
+        '<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">\n'
         f'<title>{pdf_stem}</title>\n'
         f'<style>{style}</style>\n'
         '</head>\n<body>\n'
@@ -954,7 +954,7 @@ function _bindButtons() {{
     html_content = (
         '<!DOCTYPE html>\n<html lang="es">\n<head>\n'
         '<meta charset="UTF-8">\n'
-        '<meta name="viewport" content="width=device-width,initial-scale=1.0">\n'
+        '<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">\n'
         f'<title>{_html_mod.escape(pdf_stem)}</title>\n'
         f'<style>{style}</style>\n'
         f'<script>{script_head}</script>\n'
