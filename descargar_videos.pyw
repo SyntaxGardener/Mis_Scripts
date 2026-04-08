@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-# Descargador portable — YouTube  +  RTVE Mediateca  +  EducaMadrid Mediateca
-# Requiere: pip install yt-dlp requests beautifulsoup4  |  ffmpeg en el PATH o junto al .pyw
+# Descargador Portable — YouTube + RTVE + EducaMadrid + Eduboom
+# Requiere: pip install yt-dlp requests beautifulsoup4 selenium webdriver-manager
 # ─────────────────────────────────────────────────────────────────────────────
 
 import tkinter as tk
@@ -20,16 +20,16 @@ FG2       = "#555e72"
 ACCENT    = "#2e7d32"          # verde YouTube
 ACCENT2   = "#1565c0"          # azul RTVE
 ACCENT3   = "#6a1b9a"          # morado EducaMadrid
-ACCENT_LT = "#43a047"
+ACCENT4   = "#e65100"          # naranja Eduboom
 BTN_FG    = "#ffffff"
 SEP_CLR   = "#b0b8c8"
 # ──────────────────────────────────────────────────────────────────────────────
 
-WIN_W = 520
-WIN_H = 570
+WIN_W = 540
+WIN_H = 620
 
 # =============================================================================
-# Localizar ffmpeg (misma lógica que el script original)
+# Localizar ffmpeg
 # =============================================================================
 def _obtener_ruta_ffmpeg():
     ruta_actual = os.path.dirname(os.path.abspath(__file__))
@@ -51,24 +51,6 @@ def _obtener_ruta_ffmpeg():
 
 RUTA_FFMPEG = _obtener_ruta_ffmpeg()
 
-
-# =============================================================================
-# Logger para yt-dlp → Text widget
-# =============================================================================
-class _YtLogger:
-    def __init__(self, log_fn):
-        self._log = log_fn
-    def debug(self, msg):
-        if not msg.startswith("[debug]"):
-            self._log(msg)
-    def info(self, msg):
-        self._log(msg)
-    def warning(self, msg):
-        self._log(f"⚠  {msg}")
-    def error(self, msg):
-        self._log(f"❌  {msg}")
-
-
 # =============================================================================
 # Aplicación principal
 # =============================================================================
@@ -76,51 +58,45 @@ class DescargadorApp:
 
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Descargador Portable — YouTube, RTVE & EducaMadrid")
+        self.root.title("Descargador Portable — YouTube, RTVE, EducaMadrid & Eduboom")
         self.root.configure(bg=BG)
         self.root.resizable(True, False)
         self._busy = False
 
-        # Variables YouTube
-        self.yt_url          = tk.StringVar()
-        self.yt_folder       = tk.StringVar()
-        self.yt_format       = tk.StringVar(value="720p")
-        self.yt_open_folder  = tk.BooleanVar(value=False)
+        # Variables
+        self.yt_url = tk.StringVar()
+        self.yt_folder = tk.StringVar()
+        self.yt_format = tk.StringVar(value="720p")
+        self.yt_open_folder = tk.BooleanVar(value=False)
 
-        # Variables RTVE Mediateca
-        self.rtve_url        = tk.StringVar()
-        self.rtve_folder     = tk.StringVar()
-        self.rtve_format     = tk.StringVar(value="mejor")
+        self.rtve_url = tk.StringVar()
+        self.rtve_folder = tk.StringVar()
+        self.rtve_format = tk.StringVar(value="mejor")
         self.rtve_open_folder = tk.BooleanVar(value=False)
 
-        # Variables EducaMadrid Mediateca
-        self.educa_url         = tk.StringVar()
-        self.educa_folder      = tk.StringVar()
-        self.educa_format      = tk.StringVar(value="mejor")
+        self.educa_url = tk.StringVar()
+        self.educa_folder = tk.StringVar()
         self.educa_open_folder = tk.BooleanVar(value=False)
+
+        self.eduboom_url = tk.StringVar()
+        self.eduboom_folder = tk.StringVar()
+        self.eduboom_open_folder = tk.BooleanVar(value=False)
 
         self._build_ui()
         self._place_window()
 
-    # ── Posición centrada ─────────────────────────────────────────────────────
     def _place_window(self):
         self.root.update_idletasks()
         sw = self.root.winfo_screenwidth()
         self.root.geometry(f"{WIN_W}x{WIN_H}+{(sw - WIN_W) // 2}+80")
 
-    # ── UI ────────────────────────────────────────────────────────────────────
     def _build_ui(self):
         style = ttk.Style()
         style.theme_use("clam")
-        style.configure("Horizontal.TProgressbar",
-                        troughcolor=BG2, background=ACCENT, thickness=8)
+        style.configure("Horizontal.TProgressbar", troughcolor=BG2, background=ACCENT, thickness=8)
         style.configure("App.TNotebook", background=BG, tabmargins=[2, 4, 0, 0])
-        style.configure("App.TNotebook.Tab",
-                        background=BG2, foreground=FG,
-                        font=("Segoe UI", 9, "bold"), padding=[14, 5])
-        style.map("App.TNotebook.Tab",
-                  background=[("selected", ACCENT)],
-                  foreground=[("selected", BTN_FG)])
+        style.configure("App.TNotebook.Tab", background=BG2, foreground=FG, font=("Segoe UI", 9, "bold"), padding=[12, 5])
+        style.map("App.TNotebook.Tab", background=[("selected", ACCENT)], foreground=[("selected", BTN_FG)])
 
         root_frame = tk.Frame(self.root, bg=BG)
         root_frame.pack(fill=tk.BOTH, expand=True)
@@ -128,245 +104,166 @@ class DescargadorApp:
         # Cabecera
         hdr = tk.Frame(root_frame, bg=ACCENT, pady=7, padx=14)
         hdr.pack(fill=tk.X)
-        tk.Label(hdr, text="⬇  Descargador Portable",
-                 font=("Segoe UI", 12, "bold"),
-                 bg=ACCENT, fg=BTN_FG).pack(side=tk.LEFT)
-        tk.Label(hdr, text="yt-dlp + ffmpeg",
-                 font=("Segoe UI", 8),
-                 bg=ACCENT, fg="#a5d6a7").pack(side=tk.RIGHT)
+        tk.Label(hdr, text="⬇  Descargador Portable", font=("Segoe UI", 12, "bold"), bg=ACCENT, fg=BTN_FG).pack(side=tk.LEFT)
+        tk.Label(hdr, text="yt-dlp + ffmpeg", font=("Segoe UI", 8), bg=ACCENT, fg="#a5d6a7").pack(side=tk.RIGHT)
 
-        # ── Log + progreso — debe empaquetarse ANTES que el notebook ──────────
+        # Log + progreso
         bottom = tk.Frame(root_frame, bg=BG, padx=10, pady=4)
         bottom.pack(fill=tk.X, side=tk.BOTTOM)
 
         self.status_var = tk.StringVar(value="Listo.")
-        tk.Label(bottom, textvariable=self.status_var,
-                 bg=BG, fg=FG2,
-                 font=("Segoe UI", 8, "italic"),
-                 anchor=tk.W).pack(fill=tk.X)
+        tk.Label(bottom, textvariable=self.status_var, bg=BG, fg=FG2, font=("Segoe UI", 8, "italic"), anchor=tk.W).pack(fill=tk.X)
 
-        self.pbar = ttk.Progressbar(bottom, mode="indeterminate",
-                                    style="Horizontal.TProgressbar")
+        self.pbar = ttk.Progressbar(bottom, mode="indeterminate", style="Horizontal.TProgressbar")
         self.pbar.pack(fill=tk.X, pady=(2, 6))
 
-        # ── Notebook ──────────────────────────────────────────────────────────
+        # Notebook
         nb = ttk.Notebook(root_frame, style="App.TNotebook")
         nb.pack(fill=tk.BOTH, expand=True, padx=10, pady=(6, 0))
 
-        t_yt    = tk.Frame(nb, bg=BG, padx=16, pady=12)
-        t_rtve  = tk.Frame(nb, bg=BG, padx=16, pady=12)
+        t_yt = tk.Frame(nb, bg=BG, padx=16, pady=12)
+        t_rtve = tk.Frame(nb, bg=BG, padx=16, pady=12)
         t_educa = tk.Frame(nb, bg=BG, padx=16, pady=12)
-        nb.add(t_yt,    text="  ▶  YouTube  ")
-        nb.add(t_rtve,  text="  📺  RTVE Mediateca  ")
+        t_eduboom = tk.Frame(nb, bg=BG, padx=16, pady=12)
+        
+        nb.add(t_yt, text="  ▶  YouTube  ")
+        nb.add(t_rtve, text="  📺  RTVE  ")
         nb.add(t_educa, text="  🎓  EducaMadrid  ")
+        nb.add(t_eduboom, text="  📚  Eduboom  ")
 
-        # Cambiar color del tab activo según pestaña
-        ACCENT_MAP = {0: ACCENT, 1: ACCENT2, 2: ACCENT3}
+        ACCENT_MAP = {0: ACCENT, 1: ACCENT2, 2: ACCENT3, 3: ACCENT4}
         def _on_tab_change(event):
             idx = nb.index(nb.select())
             color = ACCENT_MAP.get(idx, ACCENT)
-            style.map("App.TNotebook.Tab",
-                      background=[("selected", color)],
-                      foreground=[("selected", BTN_FG)])
+            style.map("App.TNotebook.Tab", background=[("selected", color)], foreground=[("selected", BTN_FG)])
         nb.bind("<<NotebookTabChanged>>", _on_tab_change)
 
         self._build_yt_tab(t_yt)
         self._build_rtve_tab(t_rtve)
         self._build_educa_tab(t_educa)
+        self._build_eduboom_tab(t_eduboom)
 
-    # ── Helpers UI ────────────────────────────────────────────────────────────
     def _lbl(self, parent, text):
-        tk.Label(parent, text=text, bg=BG, fg=FG2,
-                 font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(8, 1))
+        tk.Label(parent, text=text, bg=BG, fg=FG2, font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(8, 1))
 
     def _entry_row(self, parent, var, btn_text, btn_cmd):
         f = tk.Frame(parent, bg=BG)
         f.pack(fill=tk.X)
-        e = tk.Entry(f, textvariable=var, bg=BG3, fg=FG,
-                     relief=tk.FLAT, font=("Segoe UI", 9),
-                     highlightthickness=1, highlightbackground=BG2,
-                     highlightcolor=ACCENT)
+        e = tk.Entry(f, textvariable=var, bg=BG3, fg=FG, relief=tk.FLAT, font=("Segoe UI", 9), highlightthickness=1, highlightbackground=BG2)
         e.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4, padx=(0, 6))
-        tk.Button(f, text=btn_text, command=btn_cmd,
-                  bg=BG2, fg=FG, font=("Segoe UI", 8, "bold"),
-                  relief=tk.FLAT, cursor="hand2",
-                  activebackground=BG2, padx=8, pady=3).pack(side=tk.RIGHT)
+        tk.Button(f, text=btn_text, command=btn_cmd, bg=BG2, fg=FG, font=("Segoe UI", 8, "bold"), relief=tk.FLAT, cursor="hand2", activebackground=BG2, padx=8, pady=3).pack(side=tk.RIGHT)
         return e
 
     def _url_entry_row(self, parent, var, accent_color):
-        """Entry de URL con menú contextual pegar."""
         f = tk.Frame(parent, bg=BG)
         f.pack(fill=tk.X)
-        e = tk.Entry(f, textvariable=var, bg=BG3, fg=FG,
-                     relief=tk.FLAT, font=("Segoe UI", 9),
-                     highlightthickness=1, highlightbackground=BG2,
-                     highlightcolor=accent_color)
+        e = tk.Entry(f, textvariable=var, bg=BG3, fg=FG, relief=tk.FLAT, font=("Segoe UI", 9), highlightthickness=1, highlightbackground=BG2, highlightcolor=accent_color)
         e.pack(fill=tk.X, ipady=4)
         menu = tk.Menu(self.root, tearoff=0)
-        menu.add_command(label="✂  Pegar",
-                         command=lambda: (var.set(""),
-                                         e.insert(0, self.root.clipboard_get())))
+        menu.add_command(label="✂  Pegar", command=lambda: (var.set(""), e.insert(0, self.root.clipboard_get())))
         menu.add_command(label="🗑  Limpiar", command=lambda: var.set(""))
         e.bind("<Button-3>", lambda ev: menu.post(ev.x_root, ev.y_root))
         return e
 
     def _big_btn(self, parent, text, cmd, color):
-        tk.Button(parent, text=text, command=cmd,
-                  bg=color, fg=BTN_FG,
-                  font=("Segoe UI", 10, "bold"),
-                  relief=tk.FLAT, cursor="hand2",
-                  activebackground=color,
-                  activeforeground=BTN_FG,
-                  pady=7).pack(fill=tk.X, pady=(14, 4))
+        tk.Button(parent, text=text, command=cmd, bg=color, fg=BTN_FG, font=("Segoe UI", 10, "bold"), relief=tk.FLAT, cursor="hand2", activebackground=color, activeforeground=BTN_FG, pady=7).pack(fill=tk.X, pady=(14, 4))
 
-    # ── Pestaña YouTube ───────────────────────────────────────────────────────
     def _build_yt_tab(self, parent):
         self._lbl(parent, "Enlace de YouTube:")
         self._url_entry_row(parent, self.yt_url, ACCENT)
-
         self._lbl(parent, "Carpeta de destino:")
-        self._entry_row(parent, self.yt_folder, "Explorar…",
-                        lambda: self._browse_folder(self.yt_folder))
-
+        self._entry_row(parent, self.yt_folder, "Explorar…", lambda: self._browse_folder(self.yt_folder))
         fmt_f = tk.Frame(parent, bg=BG)
         fmt_f.pack(fill=tk.X, pady=(10, 2))
-        tk.Label(fmt_f, text="Formato:", bg=BG, fg=FG2,
-                 font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        tk.Label(fmt_f, text="Formato:", bg=BG, fg=FG2, font=("Segoe UI", 9)).pack(side=tk.LEFT)
         for lbl, val in [("MP4 720p", "720p"), ("MP4 1080p", "1080p"), ("MP3", "mp3")]:
-            tk.Radiobutton(fmt_f, text=lbl, variable=self.yt_format, value=val,
-                           bg=BG, fg=FG, selectcolor=BG2,
-                           activebackground=BG,
-                           font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=8)
+            tk.Radiobutton(fmt_f, text=lbl, variable=self.yt_format, value=val, bg=BG, fg=FG, selectcolor=BG2, activebackground=BG, font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=8)
+        tk.Checkbutton(parent, text="Abrir carpeta al terminar", variable=self.yt_open_folder, bg=BG, fg=FG2, selectcolor=BG2, activebackground=BG, font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(4, 0))
+        self._big_btn(parent, "⬇  Descargar de YouTube", self._yt_start, ACCENT)
 
-        tk.Checkbutton(parent, text="Abrir carpeta al terminar",
-                       variable=self.yt_open_folder,
-                       bg=BG, fg=FG2, selectcolor=BG2, activebackground=BG,
-                       font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(4, 0))
-
-        self._big_btn(parent, "⬇  Descargar de YouTube",
-                      self._yt_start, ACCENT)
-
-    # ── Pestaña RTVE Mediateca ────────────────────────────────────────────────
     def _build_rtve_tab(self, parent):
-        tk.Label(parent,
-                 text="Pega la URL de cualquier vídeo de RTVE Mediateca\n"
-                      "(rtve.es/play/videos/…)",
-                 bg=BG, fg=FG2, font=("Segoe UI", 8),
-                 justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 4))
-
-        self._lbl(parent, "URL de RTVE Mediateca:")
+        tk.Label(parent, text="Pega la URL de cualquier vídeo de RTVE", bg=BG, fg=FG2, font=("Segoe UI", 8), justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 4))
+        self._lbl(parent, "URL de RTVE:")
         self._url_entry_row(parent, self.rtve_url, ACCENT2)
-
         self._lbl(parent, "Carpeta de destino:")
-        self._entry_row(parent, self.rtve_folder, "Explorar…",
-                        lambda: self._browse_folder(self.rtve_folder))
-
+        self._entry_row(parent, self.rtve_folder, "Explorar…", lambda: self._browse_folder(self.rtve_folder))
         fmt_f = tk.Frame(parent, bg=BG)
         fmt_f.pack(fill=tk.X, pady=(10, 2))
-        tk.Label(fmt_f, text="Calidad:", bg=BG, fg=FG2,
-                 font=("Segoe UI", 9)).pack(side=tk.LEFT)
-        for lbl, val in [("Mejor disponible", "mejor"),
-                         ("720p", "720p"),
-                         ("480p", "480p")]:
-            tk.Radiobutton(fmt_f, text=lbl, variable=self.rtve_format, value=val,
-                           bg=BG, fg=FG, selectcolor=BG2,
-                           activebackground=BG,
-                           font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=6)
+        tk.Label(fmt_f, text="Calidad:", bg=BG, fg=FG2, font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        for lbl, val in [("Mejor", "mejor"), ("720p", "720p"), ("480p", "480p")]:
+            tk.Radiobutton(fmt_f, text=lbl, variable=self.rtve_format, value=val, bg=BG, fg=FG, selectcolor=BG2, activebackground=BG, font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=6)
+        tk.Checkbutton(parent, text="Abrir carpeta al terminar", variable=self.rtve_open_folder, bg=BG, fg=FG2, selectcolor=BG2, activebackground=BG, font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(4, 0))
+        self._big_btn(parent, "⬇  Descargar de RTVE", self._rtve_start, ACCENT2)
 
-        tk.Checkbutton(parent, text="Abrir carpeta al terminar",
-                       variable=self.rtve_open_folder,
-                       bg=BG, fg=FG2, selectcolor=BG2, activebackground=BG,
-                       font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(4, 0))
-
-        self._big_btn(parent, "⬇  Descargar de RTVE Mediateca",
-                      self._rtve_start, ACCENT2)
-
-    # ── Pestaña EducaMadrid Mediateca ─────────────────────────────────────────
     def _build_educa_tab(self, parent):
-        tk.Label(parent,
-                 text="Pega la URL de cualquier vídeo de la Mediateca de EducaMadrid\n"
-                      "(mediateca.educa.madrid.org/video/…)",
-                 bg=BG, fg=FG2, font=("Segoe UI", 8),
-                 justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 4))
-
-        self._lbl(parent, "URL de EducaMadrid Mediateca:")
+        tk.Label(parent, text="Pega la URL de EducaMadrid Mediateca", bg=BG, fg=FG2, font=("Segoe UI", 8), justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 4))
+        self._lbl(parent, "URL de EducaMadrid:")
         self._url_entry_row(parent, self.educa_url, ACCENT3)
-
         self._lbl(parent, "Carpeta de destino:")
-        self._entry_row(parent, self.educa_folder, "Explorar…",
-                        lambda: self._browse_folder(self.educa_folder))
+        self._entry_row(parent, self.educa_folder, "Explorar…", lambda: self._browse_folder(self.educa_folder))
+        tk.Checkbutton(parent, text="Abrir carpeta al terminar", variable=self.educa_open_folder, bg=BG, fg=FG2, selectcolor=BG2, activebackground=BG, font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(4, 0))
+        self._big_btn(parent, "⬇  Descargar de EducaMadrid", self._educa_start, ACCENT3)
 
-        fmt_f = tk.Frame(parent, bg=BG)
-        fmt_f.pack(fill=tk.X, pady=(10, 2))
-        tk.Label(fmt_f,
-                 text="ℹ  Se descarga la calidad que sirve el servidor (MP4 directo)",
-                 bg=BG, fg=FG2, font=("Segoe UI", 8, "italic")).pack(side=tk.LEFT)
+    def _build_eduboom_tab(self, parent):
+        tk.Label(parent, text="Pega la URL de Eduboom\n(eduboom.es/video/ID/titulo)", bg=BG, fg=FG2, font=("Segoe UI", 8), justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 4))
+        self._lbl(parent, "URL de Eduboom:")
+        self._url_entry_row(parent, self.eduboom_url, ACCENT4)
+        self._lbl(parent, "Carpeta de destino:")
+        self._entry_row(parent, self.eduboom_folder, "Explorar…", lambda: self._browse_folder(self.eduboom_folder))
+        tk.Checkbutton(parent, text="Abrir carpeta al terminar", variable=self.eduboom_open_folder, bg=BG, fg=FG2, selectcolor=BG2, activebackground=BG, font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(4, 0))
+        self._big_btn(parent, "⬇  Descargar de Eduboom", self._eduboom_start, ACCENT4)
 
-        tk.Checkbutton(parent, text="Abrir carpeta al terminar",
-                       variable=self.educa_open_folder,
-                       bg=BG, fg=FG2, selectcolor=BG2, activebackground=BG,
-                       font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(4, 0))
-
-        self._big_btn(parent, "⬇  Descargar de EducaMadrid",
-                      self._educa_start, ACCENT3)
-
-    # ── Carpeta común ─────────────────────────────────────────────────────────
-    def _browse_folder(self, var: tk.StringVar):
+    def _browse_folder(self, var):
         d = filedialog.askdirectory(title="Carpeta de destino")
         if d:
             var.set(d)
 
-    # ── Helpers estado ────────────────────────────────────────────────────────
-    def _status(self, msg: str):
+    def _status(self, msg):
         self.status_var.set(msg)
         self.root.update_idletasks()
 
     def _progress_hook(self, d):
         if d.get("status") == "downloading":
-            total      = d.get("total_bytes") or d.get("total_bytes_estimate", 0)
+            total = d.get("total_bytes") or d.get("total_bytes_estimate", 0)
             downloaded = d.get("downloaded_bytes", 0)
-            speed      = d.get("speed") or 0
-            eta        = d.get("eta") or 0
+            speed = d.get("speed") or 0
+            eta = d.get("eta") or 0
             if total:
                 pct = int(downloaded / total * 100)
                 self.pbar.stop()
                 self.pbar.configure(mode="determinate", maximum=100, value=pct)
-                self._status(
-                    f"Descargando… {pct}%  "
-                    f"({speed/1024:.0f} KB/s  ETA {eta}s)"
-                )
+                self._status(f"Descargando… {pct}% ({speed/1024:.0f} KB/s ETA {eta}s)")
             self.root.update_idletasks()
         elif d.get("status") == "finished":
             self._status("Procesando…")
             self.pbar.configure(mode="indeterminate")
             self.pbar.start(10)
 
-    # ── Descarga genérica (hilo) ──────────────────────────────────────────────
-    def _run_download(self, ydl_opts: dict, url: str, folder: str,
-                      open_folder: bool):
+    def _run_download(self, ydl_opts, url, folder, open_folder):
         self.pbar.start(10)
         try:
             import yt_dlp
         except ImportError:
-            messagebox.showerror(
-                "Error",
-                "yt-dlp no está instalado.\nEjecuta:  pip install yt-dlp")
-            self.pbar.stop(); self._busy = False; return
-
+            messagebox.showerror("Error", "yt-dlp no está instalado.\nEjecuta: pip install yt-dlp")
+            self.pbar.stop()
+            self._busy = False
+            return
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
-            self._status("✅  Descarga completada")
+            self._status("✅ Descarga completada")
             messagebox.showinfo("Éxito", "¡Archivo guardado correctamente!")
             if open_folder and os.path.exists(folder):
                 if sys.platform == "win32":
                     os.startfile(folder)
                 elif sys.platform == "darwin":
-                    import subprocess; subprocess.Popen(["open", folder])
+                    import subprocess
+                    subprocess.Popen(["open", folder])
                 else:
-                    import subprocess; subprocess.Popen(["xdg-open", folder])
+                    import subprocess
+                    subprocess.Popen(["xdg-open", folder])
         except Exception as exc:
-            self._status("❌  Error en la descarga")
+            self._status("❌ Error en la descarga")
             messagebox.showerror("Error", str(exc))
         finally:
             self.pbar.stop()
@@ -377,289 +274,329 @@ class DescargadorApp:
     def _yt_start(self):
         if self._busy:
             return
-        url    = self.yt_url.get().strip()
+        url = self.yt_url.get().strip()
         folder = self.yt_folder.get().strip()
         if not url or not folder:
-            messagebox.showwarning("Atención",
-                                   "Introduce la URL y selecciona una carpeta.")
+            messagebox.showwarning("Atención", "Introduce la URL y selecciona una carpeta.")
             return
         folder = os.path.normpath(folder)
-        fmt    = self.yt_format.get()
-
-        ydl_opts = {
-            'outtmpl':          os.path.join(folder, '%(title)s.%(ext)s'),
-            'noplaylist':       True,
-            'ffmpeg_location':  RUTA_FFMPEG,
-            'progress_hooks':   [self._progress_hook],
-        }
+        fmt = self.yt_format.get()
+        ydl_opts = {'outtmpl': os.path.join(folder, '%(title)s.%(ext)s'), 'noplaylist': True, 'ffmpeg_location': RUTA_FFMPEG, 'progress_hooks': [self._progress_hook]}
         if fmt == "mp3":
-            ydl_opts.update({
-                'format': 'bestaudio/best',
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }],
-            })
+            ydl_opts.update({'format': 'bestaudio/best', 'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]})
         else:
             res = "720" if fmt == "720p" else "1080"
-            ydl_opts['format'] = (
-                f'bestvideo[height<={res}][ext=mp4]'
-                f'+bestaudio[ext=m4a]/best[ext=mp4]/best'
-            )
-
+            ydl_opts['format'] = f'bestvideo[height<={res}][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
         self._busy = True
         self._status(f"Iniciando descarga YouTube ({fmt})…")
-        threading.Thread(
-            target=self._run_download,
-            args=(ydl_opts, url, folder, self.yt_open_folder.get()),
-            daemon=True
-        ).start()
+        threading.Thread(target=self._run_download, args=(ydl_opts, url, folder, self.yt_open_folder.get()), daemon=True).start()
 
-    # ── RTVE Mediateca ────────────────────────────────────────────────────────
+    # ── RTVE ──────────────────────────────────────────────────────────────────
     def _rtve_start(self):
         if self._busy:
             return
-        url    = self.rtve_url.get().strip()
+        url = self.rtve_url.get().strip()
         folder = self.rtve_folder.get().strip()
         if not url or not folder:
-            messagebox.showwarning("Atención",
-                                   "Introduce la URL y selecciona una carpeta.")
+            messagebox.showwarning("Atención", "Introduce la URL y selecciona una carpeta.")
             return
         folder = os.path.normpath(folder)
-        cal    = self.rtve_format.get()
-
+        cal = self.rtve_format.get()
         if cal == "mejor":
             fmt_str = "best"
         elif cal == "720p":
             fmt_str = "bestvideo[height<=720]+bestaudio/best[height<=720]/best"
-        else:  # 480p
+        else:
             fmt_str = "bestvideo[height<=480]+bestaudio/best[height<=480]/best"
-
-        ydl_opts = {
-            'outtmpl':         os.path.join(folder, '%(title)s.%(ext)s'),
-            'format':          fmt_str,
-            'ffmpeg_location': RUTA_FFMPEG,
-            'progress_hooks':  [self._progress_hook],
-            # RTVE usa HLS; merge en mp4
-            'merge_output_format': 'mp4',
-        }
-
+        ydl_opts = {'outtmpl': os.path.join(folder, '%(title)s.%(ext)s'), 'format': fmt_str, 'ffmpeg_location': RUTA_FFMPEG, 'progress_hooks': [self._progress_hook], 'merge_output_format': 'mp4'}
         self._busy = True
-        self._status(f"Iniciando descarga RTVE Mediateca ({cal})…")
-        threading.Thread(
-            target=self._run_download,
-            args=(ydl_opts, url, folder, self.rtve_open_folder.get()),
-            daemon=True
-        ).start()
+        self._status(f"Iniciando descarga RTVE ({cal})…")
+        threading.Thread(target=self._run_download, args=(ydl_opts, url, folder, self.rtve_open_folder.get()), daemon=True).start()
 
-    # ── EducaMadrid Mediateca — métodos auxiliares ───────────────────────────
-
-    _EDUCA_STREAM_PATTERNS = [
-        "https://mediateca.educa.madrid.org/streaming.php?id={id}&ext=.mp4",
-        "https://mediateca.educa.madrid.org/streaming.php?id={id}",
-        "https://mediateca.educa.madrid.org/video/{id}/download",
-    ]
-    _EDUCA_UA = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    )
-
-    def _educa_extraer_id(self, url: str):
+    # ── EducaMadrid ───────────────────────────────────────────────────────────
+    def _educa_extraer_id(self, url):
         m = re.search(r"/video/([a-z0-9]+)", url)
         return m.group(1) if m else None
 
-    def _educa_obtener_urls(self, url_pagina: str, video_id: str) -> tuple:
-        """Devuelve (titulo, [lista_de_urls_candidatas])."""
-        try:
-            from bs4 import BeautifulSoup
-            import requests as _req
-        except ImportError:
-            return ("video", [])
-
-        session = _req.Session()
-        session.headers.update({
-            "User-Agent": self._EDUCA_UA,
-            "Referer": url_pagina,
-        })
-
-        resp = session.get(url_pagina, timeout=15)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        h1 = soup.find("h1")
-        titulo = h1.get_text(strip=True) if h1 else "video"
-
-        urls = []
-        for tag in soup.find_all(["video", "source"]):
-            src = tag.get("src") or tag.get("data-src")
-            if src:
-                urls.append(urljoin(url_pagina, src))
-        for tag in soup.find_all(True):
-            for attr, val in tag.attrs.items():
-                if isinstance(val, str) and ".mp4" in val:
-                    urls.append(urljoin(url_pagina, val))
-        for script in soup.find_all("script"):
-            encontrados = re.findall(r'https?://[^\s\'"]+\.mp4[^\s\'"]*',
-                                     script.get_text())
-            urls.extend(encontrados)
-
-        # Añadir patrones conocidos
-        for patron in self._EDUCA_STREAM_PATTERNS:
-            urls.append(patron.format(id=video_id))
-
-        return (titulo, list(dict.fromkeys(urls)))
-
-    def _educa_descargar_archivo(self, url_video: str, ruta: str) -> bool:
-        """Descarga directa con requests, actualizando barra de progreso."""
-        try:
-            import requests as _req
-        except ImportError:
-            return False
-
-        session = _req.Session()
-        session.headers.update({"User-Agent": self._EDUCA_UA})
-        try:
-            resp = session.get(url_video, stream=True, timeout=30)
-            if resp.status_code != 200:
-                return False
-            if "text/html" in resp.headers.get("Content-Type", ""):
-                return False
-
-            total = int(resp.headers.get("Content-Length", 0))
-            descargado = 0
-
-            with open(ruta, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=65536):
-                    if chunk:
-                        f.write(chunk)
-                        descargado += len(chunk)
-                        if total:
-                            pct = int(descargado / total * 100)
-                            self.pbar.configure(
-                                mode="determinate", maximum=100, value=pct)
-                            self._status(
-                                f"Descargando… {pct}%  "
-                                f"({descargado/1_048_576:.1f} / "
-                                f"{total/1_048_576:.1f} MB)")
-            return True
-        except Exception:
-            return False
-
-    def _educa_run(self, url_pagina: str, folder: str, open_folder: bool):
-        """Hilo principal de descarga EducaMadrid."""
-        self.pbar.configure(mode="indeterminate")
+    def _educa_descargar(self, url_pagina, folder, open_folder):
         self.pbar.start(10)
         try:
-            # Verificar dependencias
-            try:
-                import requests          # noqa: F401
-                from bs4 import BeautifulSoup  # noqa: F401
-            except ImportError as e:
-                messagebox.showerror(
-                    "Dependencia faltante",
-                    f"{e}\n\nEjecuta:\n  pip install requests beautifulsoup4")
-                return
-
-            video_id = self._educa_extraer_id(url_pagina)
-            if not video_id:
-                messagebox.showerror("Error",
-                                     "No se pudo extraer el ID del vídeo de la URL.")
-                return
-
-            self._status("Analizando página de EducaMadrid…")
-            titulo, urls_candidatas = self._educa_obtener_urls(url_pagina, video_id)
-
-            if not urls_candidatas:
-                messagebox.showerror("Error",
-                                     "No se encontraron URLs de vídeo en la página.")
-                return
-
-            # Nombre de archivo seguro
-            nombre = re.sub(r'[\\/*?:"<>|]', "", titulo).strip().replace(" ", "_")
-            nombre = (nombre[:80] or video_id) + ".mp4"
-            ruta_destino = os.path.join(folder, nombre)
-
-            self._status(f"Probando {len(urls_candidatas)} URL(s) posible(s)…")
+            import requests
+            from bs4 import BeautifulSoup
+        except ImportError:
+            messagebox.showerror("Error", "Falta requests o beautifulsoup4\npip install requests beautifulsoup4")
             self.pbar.stop()
-
-            descargado = False
-            for i, url_vid in enumerate(urls_candidatas, 1):
-                self._status(
-                    f"[{i}/{len(urls_candidatas)}] Probando: "
-                    f"{url_vid[:60]}…")
-                self.pbar.configure(mode="indeterminate")
-                self.pbar.start(10)
-                if self._educa_descargar_archivo(url_vid, ruta_destino):
-                    # Verificar que el archivo tiene contenido real
-                    if os.path.exists(ruta_destino) and \
-                            os.path.getsize(ruta_destino) > 10_000:
-                        descargado = True
+            self._busy = False
+            return
+        video_id = self._educa_extraer_id(url_pagina)
+        if not video_id:
+            messagebox.showerror("Error", "No se pudo extraer el ID del vídeo")
+            self.pbar.stop()
+            self._busy = False
+            return
+        self._status("Analizando página...")
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            resp = requests.get(url_pagina, headers=headers, timeout=15)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            titulo = soup.find("h1")
+            titulo = titulo.get_text(strip=True) if titulo else "video"
+            titulo = re.sub(r'[\\/*?:"<>|]', "", titulo).strip().replace(" ", "_")[:80]
+            url_video = None
+            for tag in soup.find_all(["video", "source"]):
+                src = tag.get("src") or tag.get("data-src")
+                if src and ".mp4" in src:
+                    url_video = urljoin(url_pagina, src)
+                    break
+            if not url_video:
+                for script in soup.find_all("script"):
+                    encontrados = re.findall(r'https?://[^\s\'"]+\.mp4[^\s\'"]*', script.get_text())
+                    if encontrados:
+                        url_video = encontrados[0]
                         break
-                    else:
-                        try:
-                            os.remove(ruta_destino)
-                        except Exception:
-                            pass
-                self.pbar.stop()
-
-            if descargado:
-                self._status("✅  Descarga completada")
-                messagebox.showinfo(
-                    "Éxito",
-                    f"¡Archivo guardado correctamente!\n\n{ruta_destino}")
-                if open_folder and os.path.exists(folder):
-                    if sys.platform == "win32":
-                        os.startfile(folder)
-                    elif sys.platform == "darwin":
-                        import subprocess; subprocess.Popen(["open", folder])
-                    else:
-                        import subprocess
-                        subprocess.Popen(["xdg-open", folder])
+            if not url_video:
+                url_video = f"https://mediateca.educa.madrid.org/streaming.php?id={video_id}&ext=.mp4"
+            ruta = os.path.join(folder, f"{titulo}.mp4")
+            self._status("Descargando...")
+            self.pbar.configure(mode="determinate", maximum=100, value=0)
+            r = requests.get(url_video, stream=True, timeout=30)
+            total = int(r.headers.get('content-length', 0))
+            with open(ruta, 'wb') as f:
+                for i, chunk in enumerate(r.iter_content(chunk_size=65536)):
+                    if chunk:
+                        f.write(chunk)
+                        if total:
+                            pct = int((i * 65536) / total * 100)
+                            self.pbar.configure(value=min(pct, 100))
+            if os.path.exists(ruta) and os.path.getsize(ruta) > 10000:
+                self._status("✅ Descarga completada")
+                messagebox.showinfo("Éxito", f"Vídeo guardado: {titulo}.mp4")
+                if open_folder:
+                    os.startfile(folder) if sys.platform == "win32" else None
             else:
-                self._status("❌  No se pudo descargar el vídeo")
-                messagebox.showerror(
-                    "Error",
-                    "No se pudo descargar el vídeo.\n\n"
-                    "Posibles causas:\n"
-                    "• El vídeo requiere autenticación\n"
-                    "• La URL de streaming ha cambiado\n"
-                    "• El vídeo usa DRM o HLS protegido")
-        except Exception as exc:
-            self._status("❌  Error en la descarga")
-            messagebox.showerror("Error", str(exc))
+                raise Exception("Archivo vacío")
+        except Exception as e:
+            self._status("❌ Error")
+            messagebox.showerror("Error", str(e))
         finally:
             self.pbar.stop()
-            self.pbar.configure(mode="indeterminate", value=0)
             self._busy = False
 
-    # ── EducaMadrid Mediateca — inicio ────────────────────────────────────────
     def _educa_start(self):
         if self._busy:
             return
-        url    = self.educa_url.get().strip()
+        url = self.educa_url.get().strip()
         folder = self.educa_folder.get().strip()
         if not url or not folder:
-            messagebox.showwarning("Atención",
-                                   "Introduce la URL y selecciona una carpeta.")
+            messagebox.showwarning("Atención", "Introduce la URL y selecciona una carpeta.")
             return
-
-        if "educa.madrid.org" not in url:
-            if not messagebox.askyesno(
-                    "URL inusual",
-                    "La URL no parece ser de EducaMadrid.\n¿Continuar igualmente?"):
-                return
-
         folder = os.path.normpath(folder)
         self._busy = True
-        self._status("Iniciando descarga EducaMadrid…")
-        threading.Thread(
-            target=self._educa_run,
-            args=(url, folder, self.educa_open_folder.get()),
-            daemon=True
-        ).start()
+        threading.Thread(target=self._educa_descargar, args=(url, folder, self.educa_open_folder.get()), daemon=True).start()
 
+    # ── Eduboom ───────────────────────────────────────────────────────────────
+    def _eduboom_extraer_id(self, url):
+        m = re.search(r"/video/(\d+)", url)
+        return m.group(1) if m else None
+
+    def _eduboom_descargar(self, url_pagina, folder, open_folder):
+        self.pbar.start(10)
+        try:
+            from selenium import webdriver
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            from webdriver_manager.chrome import ChromeDriverManager
+            from selenium.webdriver.chrome.options import Options
+            from selenium.webdriver.chrome.service import Service
+            import yt_dlp
+            import tempfile, time, html as html_mod
+        except ImportError:
+            messagebox.showerror("Error",
+                "Faltan dependencias. Ejecuta:\n"
+                "pip install selenium webdriver-manager yt-dlp")
+            self.pbar.stop()
+            self._busy = False
+            return
+
+        video_id = self._eduboom_extraer_id(url_pagina)
+        if not video_id:
+            messagebox.showerror("Error",
+                "No se pudo extraer el ID del vídeo.\n"
+                "Formato esperado: eduboom.es/video/ID/titulo")
+            self.pbar.stop()
+            self._busy = False
+            return
+
+        UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+              "AppleWebKit/537.36 (KHTML, like Gecko) "
+              "Chrome/122.0.0.0 Safari/537.36")
+
+        # ── Paso 1: Selenium — cargar la página y extraer URL + cookies ───────
+        self._status("Abriendo navegador para analizar la página...")
+        chrome_options = Options()
+        chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument(f"--user-agent={UA}")
+        # Perfil de usuario temporal para que Chrome acepte cookies normalmente
+        tmp_profile = tempfile.mkdtemp(prefix="eduboom_chrome_")
+        chrome_options.add_argument(f"--user-data-dir={tmp_profile}")
+
+        service = Service(ChromeDriverManager().install())
+        driver = None
+        url_video = None
+        titulo = f"eduboom_{video_id}"
+        cookies_netscape = ""   # se rellenará con las cookies de Selenium
+
+        try:
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            self._status("Cargando página de Eduboom...")
+            driver.get(url_pagina)
+
+            # Esperar a que el body esté presente y dar tiempo al JS
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            time.sleep(4)   # esperar renderizado del player JS
+
+            page = html_mod.unescape(driver.page_source).replace('\\/', '/')
+
+            # ── Buscar URL m3u8 ──────────────────────────────────────────────
+            patron = r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*'
+            matches = list(dict.fromkeys(re.findall(patron, page)))  # sin duplicados
+
+            # También rastrear atributos data-* de cualquier elemento
+            if not matches:
+                for elem in driver.find_elements(By.CSS_SELECTOR,
+                        "[data-params],[data-src],[data-video],[data-url],[data-file]"):
+                    for attr in ("data-params","data-src","data-video","data-url","data-file"):
+                        val = elem.get_attribute(attr) or ""
+                        val = html_mod.unescape(val).replace('\\/', '/')
+                        matches += re.findall(patron, val)
+
+            # Limpiar y deduplicar
+            matches = list(dict.fromkeys(m.rstrip('",\'\\') for m in matches))
+
+            if not matches:
+                raise Exception(
+                    "No se encontró la URL del vídeo en la página.\n\n"
+                    "Posibles causas:\n"
+                    "• El vídeo requiere iniciar sesión en Eduboom\n"
+                    "• La URL introducida no es correcta\n"
+                    "• La estructura de la web ha cambiado")
+
+            url_video = matches[0]
+
+            # ── Obtener título ───────────────────────────────────────────────
+            try:
+                h1 = driver.find_element(By.TAG_NAME, "h1").text.strip()
+                if h1:
+                    titulo = h1
+            except Exception:
+                t = driver.title
+                for suf in (" | Eduboom.es", " | Eduboom", "- Eduboom"):
+                    t = t.replace(suf, "")
+                if t.strip():
+                    titulo = t.strip()
+            titulo = re.sub(r'[\\/*?:"<>|]', "", titulo).strip()[:80] or f"eduboom_{video_id}"
+
+            # ── Exportar cookies al formato Netscape para yt-dlp ─────────────
+            lines = ["# Netscape HTTP Cookie File"]
+            for c in driver.get_cookies():
+                domain   = c.get("domain", "")
+                flag     = "TRUE" if domain.startswith(".") else "FALSE"
+                path     = c.get("path", "/")
+                secure   = "TRUE" if c.get("secure") else "FALSE"
+                expiry   = str(int(c.get("expiry", 0)))
+                name     = c.get("name", "")
+                value    = c.get("value", "")
+                lines.append(f"{domain}\t{flag}\t{path}\t{secure}\t{expiry}\t{name}\t{value}")
+            cookies_netscape = "\n".join(lines)
+
+        except Exception as e:
+            self._status("❌ Error")
+            messagebox.showerror("Error en Eduboom", str(e))
+            if driver:
+                try: driver.quit()
+                except Exception: pass
+            self.pbar.stop()
+            self._busy = False
+            return
+        finally:
+            if driver:
+                try: driver.quit()
+                except Exception: pass
+            driver = None
+
+        # ── Paso 2: yt-dlp — descargar con cookies y cabeceras correctas ─────
+        self._status("Descargando vídeo (HLS)...")
+        self.pbar.configure(mode="determinate", maximum=100, value=0)
+
+        # Guardar cookies en archivo temporal
+        cookie_file = None
+        try:
+            import tempfile as tf
+            fd, cookie_file = tf.mkstemp(suffix=".txt", prefix="eduboom_cookies_")
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(cookies_netscape)
+
+            ydl_opts = {
+                'outtmpl': os.path.join(folder, f"{titulo}.%(ext)s"),
+                'ffmpeg_location': RUTA_FFMPEG,
+                'progress_hooks': [self._progress_hook],
+                'merge_output_format': 'mp4',
+                'cookiefile': cookie_file,
+                'http_headers': {
+                    'User-Agent': UA,
+                    'Referer': 'https://www.eduboom.es/',
+                    'Origin':  'https://www.eduboom.es',
+                },
+                'quiet': False,
+            }
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url_video])
+
+        finally:
+            if cookie_file and os.path.exists(cookie_file):
+                try: os.remove(cookie_file)
+                except Exception: pass
+            # Limpiar perfil temporal de Chrome
+            try:
+                import shutil
+                shutil.rmtree(tmp_profile, ignore_errors=True)
+            except Exception:
+                pass
+
+        # ── Comprobar resultado ───────────────────────────────────────────────
+        import glob
+        patron_arch = os.path.join(folder, f"{titulo}.*")
+        archivos = [f for f in glob.glob(patron_arch) if os.path.getsize(f) > 10000]
+        if archivos:
+            self._status("✅ Descarga completada")
+            messagebox.showinfo("Éxito", f"Vídeo guardado:\n{archivos[0]}")
+            if open_folder and sys.platform == "win32":
+                os.startfile(folder)
+        else:
+            self._status("❌ Error")
+            messagebox.showerror("Error", "El archivo descargado está vacío o no se encontró.")
+
+        self.pbar.stop()
+        self._busy = False
+
+    def _eduboom_start(self):
+        if self._busy:
+            return
+        url = self.eduboom_url.get().strip()
+        folder = self.eduboom_folder.get().strip()
+        if not url or not folder:
+            messagebox.showwarning("Atención", "Introduce la URL y selecciona una carpeta.")
+            return
+        folder = os.path.normpath(folder)
+        self._busy = True
+        threading.Thread(target=self._eduboom_descargar, args=(url, folder, self.eduboom_open_folder.get()), daemon=True).start()
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":

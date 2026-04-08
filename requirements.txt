@@ -36,4 +36,5 @@ groq
 requests
 python-pptx
 pikepdf
+browser_cookie3
 pygame
