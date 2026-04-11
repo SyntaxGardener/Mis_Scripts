@@ -292,6 +292,98 @@ class DescargadorApp:
         threading.Thread(target=self._run_download, args=(ydl_opts, url, folder, self.yt_open_folder.get()), daemon=True).start()
 
     # ── RTVE ──────────────────────────────────────────────────────────────────
+    # El extractor rtve.es:alacarta de yt-dlp está roto. En su lugar usamos
+    # el endpoint M3U8 directo de ZTNR (documentado en Streamlink).
+
+    def _rtve_resolver(self, url_pagina, calidad):
+        """Devuelve (titulo, url_m3u8) usando el endpoint ZTNR directo de RTVE."""
+        import requests
+
+        m = re.search(r'/(\d{6,})', url_pagina)
+        if not m:
+            raise ValueError(
+                "No se encontró el ID del vídeo en la URL.\n"
+                "Ejemplo: https://www.rtve.es/play/videos/nombre/titulo/17018915/")
+        video_id = m.group(1)
+
+        UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+              "AppleWebKit/537.36 (KHTML, like Gecko) "
+              "Chrome/122.0.0.0 Safari/537.36")
+        hdrs = {"User-Agent": UA}
+
+        # Obtener título desde la API de metadatos (opcional)
+        titulo = f"rtve_{video_id}"
+        try:
+            r = requests.get(f"https://api2.rtve.es/api/videos/{video_id}.json",
+                             headers={**hdrs, "Accept": "application/json"}, timeout=15)
+            items = r.json().get("page", {}).get("items", [])
+            if items:
+                t = (items[0].get("longTitle") or items[0].get("title", "")).strip()
+                titulo = re.sub(r'[\\/*?:"<>|]', "", t).strip()[:80] or titulo
+        except Exception:
+            pass
+
+        # URL M3U8 directa — yt-dlp seleccionará la calidad de la playlist HLS
+        url_m3u8 = f"https://ztnr.rtve.es/ztnr/{video_id}.m3u8"
+        try:
+            chk = requests.get(url_m3u8, headers=hdrs, timeout=15)
+            if chk.status_code == 404:
+                raise ValueError(
+                    f"Vídeo {video_id} no disponible (404).\n"
+                    "Puede haber expirado o tener restricción geográfica.")
+            chk.raise_for_status()
+        except ValueError:
+            raise
+        except Exception as e:
+            raise ConnectionError(f"No se pudo verificar el vídeo:\n{e}")
+
+        return titulo, url_m3u8
+
+    def _rtve_descargar(self, url_pagina, folder, cal, open_folder):
+        import yt_dlp
+        self.pbar.start(10)
+        try:
+            self._status("Obteniendo URL de RTVE…")
+            titulo, url_video = self._rtve_resolver(url_pagina, cal)
+            self._status(f"Descargando: {titulo}")
+        except Exception as exc:
+            self._status("❌ Error RTVE")
+            messagebox.showerror("Error RTVE", str(exc))
+            self.pbar.stop(); self._busy = False; return
+
+        # Selección de calidad: yt-dlp elige de la playlist HLS
+        if cal == "mejor":
+            fmt = "bestvideo+bestaudio/best"
+        elif cal == "720p":
+            fmt = "bestvideo[height<=720]+bestaudio/best[height<=720]/best"
+        else:
+            fmt = "bestvideo[height<=480]+bestaudio/best[height<=480]/best"
+
+        ydl_opts = {
+            "outtmpl":             os.path.join(folder, f"{titulo}.%(ext)s"),
+            "ffmpeg_location":     RUTA_FFMPEG,
+            "progress_hooks":      [self._progress_hook],
+            "merge_output_format": "mp4",
+            "format":              fmt,
+            "quiet":               False,
+        }
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url_video])
+            self._status("✅ Descarga completada")
+            messagebox.showinfo("Éxito", f"Archivo guardado en:\n{folder}")
+            if open_folder and os.path.exists(folder):
+                if sys.platform == "win32":   os.startfile(folder)
+                elif sys.platform == "darwin": import subprocess; subprocess.Popen(["open", folder])
+                else:                          import subprocess; subprocess.Popen(["xdg-open", folder])
+        except Exception as exc:
+            self._status("❌ Error en la descarga")
+            messagebox.showerror("Error", str(exc))
+        finally:
+            self.pbar.stop()
+            self.pbar.configure(mode="indeterminate", value=0)
+            self._busy = False
+
     def _rtve_start(self):
         if self._busy:
             return
@@ -302,16 +394,12 @@ class DescargadorApp:
             return
         folder = os.path.normpath(folder)
         cal = self.rtve_format.get()
-        if cal == "mejor":
-            fmt_str = "best"
-        elif cal == "720p":
-            fmt_str = "bestvideo[height<=720]+bestaudio/best[height<=720]/best"
-        else:
-            fmt_str = "bestvideo[height<=480]+bestaudio/best[height<=480]/best"
-        ydl_opts = {'outtmpl': os.path.join(folder, '%(title)s.%(ext)s'), 'format': fmt_str, 'ffmpeg_location': RUTA_FFMPEG, 'progress_hooks': [self._progress_hook], 'merge_output_format': 'mp4'}
         self._busy = True
         self._status(f"Iniciando descarga RTVE ({cal})…")
-        threading.Thread(target=self._run_download, args=(ydl_opts, url, folder, self.rtve_open_folder.get()), daemon=True).start()
+        threading.Thread(
+            target=self._rtve_descargar,
+            args=(url, folder, cal, self.rtve_open_folder.get()),
+            daemon=True).start()
 
     # ── EducaMadrid ───────────────────────────────────────────────────────────
     def _educa_extraer_id(self, url):
