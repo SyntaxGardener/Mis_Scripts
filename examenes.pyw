@@ -348,9 +348,12 @@ class AppExamenesPro:
 
             preguntas = []
             pregunta_actual = ""
+            dentro_de_ejercicio = False
             
-            # Patrón para detectar preguntas
+            # Patrón para detectar preguntas numeradas en negrita (ej: "1.", "2)", etc.)
             patron_pregunta = r'^\d+[\.\)](?!\d)'
+            # Patrón para detectar ejercicios (ej: "EJERCICIO 1.", "EJERCICIO 2", etc.)
+            patron_ejercicio = r'^EJERCICIO\s+\d+'
 
             for idx in indices:
                 if idx >= len(doc_pdf): continue
@@ -360,9 +363,18 @@ class AppExamenesPro:
                         txt = "".join([s["text"] for s in l["spans"]]).strip()
                         bold = any(s["flags"] & 2 or "bold" in s["font"].lower() for s in l["spans"])
                         
-                        if bold and re.match(patron_pregunta, txt):
+                        es_inicio_ejercicio = re.match(patron_ejercicio, txt, re.IGNORECASE)
+                        # Las preguntas numeradas solo cuentan si están en negrita Y no estamos dentro de un EJERCICIO
+                        es_inicio_pregunta = bold and re.match(patron_pregunta, txt) and not dentro_de_ejercicio
+                        
+                        if es_inicio_ejercicio:
                             if pregunta_actual: preguntas.append(pregunta_actual.strip())
                             pregunta_actual = txt
+                            dentro_de_ejercicio = True
+                        elif es_inicio_pregunta:
+                            if pregunta_actual: preguntas.append(pregunta_actual.strip())
+                            pregunta_actual = txt
+                            dentro_de_ejercicio = False
                         elif pregunta_actual and "entregar" not in txt.lower():
                             pregunta_actual += " " + txt
             
