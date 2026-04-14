@@ -618,7 +618,7 @@ class MenuFinalPerfecto:
             return "PDF/DOCX"
         if any(x in n for x in ["examen", "apuntes", "resumen", "presentacion", "timeline", "notas"]):
             return "CLASES"
-        if any(x in n for x in ["video", "audio", "caratula", "youtube", "subtitulo", "voz", "mezclador"]):
+        if any(x in n for x in ["video", "audio", "caratula", "youtube", "subtitulo", "voz", "transcriptor", "mezclador"]):
             return "AUDIO & VÍDEO"
         if any(x in n for x in ["horario", "diligencia", "gestion",
                                   "certificado", "calculador", "diploma"]):
