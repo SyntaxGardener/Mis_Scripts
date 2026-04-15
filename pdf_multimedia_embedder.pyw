@@ -1481,8 +1481,6 @@ class App(tk.Tk):
 
         self._html_d_panel.pack_forget()
 
-        tk.Frame(left, height=1, bg=C["CARD"]).pack(fill="x", pady=(10, 6))
-
         # ── Miniatura opcional ────────────────────────────────────────────
         self._section(left, "Miniatura personalizada  (solo Modos A y B, opcional)")
         self.thumb_var = tk.StringVar()
@@ -1953,13 +1951,13 @@ class App(tk.Tk):
     # ── Posicionado de ventana ─────────────────────────────────────────────
 
     def _position_window(self):
-        """Centra horizontalmente y sitúa a 5 px del borde superior."""
+        """Centra horizontalmente y sitúa a 2 px del borde superior."""
         self.update_idletasks()
         w = self.winfo_reqwidth()
         h = self.winfo_reqheight()
         sw = self.winfo_screenwidth()
         x = (sw - w) // 2
-        y = 5
+        y = 2
         self.geometry(f"{w}x{h}+{x}+{y}")
 
 
