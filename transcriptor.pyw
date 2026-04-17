@@ -178,8 +178,9 @@ class TranscriptorApp(tk.Tk):
     # ── Acciones ────────────────────────────────────────────────────
     def _pick_audio(self):
         path = filedialog.askopenfilename(
-            title="Seleccionar archivo MP3",
-            filetypes=[("Audio MP3", "*.mp3"), ("Todos los archivos", "*.*")]
+            title="Seleccionar archivo de audio",
+            filetypes=[("Archivos de audio", "*.mp3 *.m4a *.wav *.ogg *.flac"),
+           ("Todos los archivos", "*.*")]
         )
         if path:
             self.audio_path.set(path)
