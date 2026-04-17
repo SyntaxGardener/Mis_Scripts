@@ -31,6 +31,15 @@ REQUIRED = {"openai-whisper": "whisper"}
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 os.environ["PATH"] = _SCRIPT_DIR + os.pathsep + os.environ.get("PATH", "")
 
+# Velocidad estimada de cada modelo (segundos de audio por segundo de CPU).
+# Se usa solo para la barra de progreso estimada; no afecta la transcripción.
+_MODEL_SPEED = {
+    "tiny":   10.0,
+    "base":    6.0,
+    "small":   3.0,
+    "medium":  1.2,
+}
+
 def ensure_packages():
     missing = []
     for pkg, mod in REQUIRED.items():
@@ -49,28 +58,27 @@ class TranscriptorApp(tk.Tk):
         self.resizable(False, False)
 
         # Estado
-        self.audio_path   = tk.StringVar()
-        self.output_dir   = tk.StringVar(value=str(Path.home() / "Documentos"))
-        self.open_folder  = tk.BooleanVar(value=True)
-        self.model_choice = tk.StringVar(value="small")
-        self.status_msg   = tk.StringVar(value="Listo")
-        self.progress_var = tk.DoubleVar(value=0)
-        self._running     = False
+        self.audio_path    = tk.StringVar()
+        self.output_dir    = tk.StringVar(value=str(Path.home() / "Documentos"))
+        self.open_folder   = tk.BooleanVar(value=True)
+        self.model_choice  = tk.StringVar(value="small")
+        self.status_msg    = tk.StringVar(value="Listo")
+        self.progress_var  = tk.DoubleVar(value=0)
+        self._running      = False
+        self._timer_active = False   # controla el tick del cronómetro
 
         self._build_ui()
-        self._center_window(540, 480)
+        self._center_window(540, 490)
 
     # ── Layout ──────────────────────────────────────────────────────
     def _build_ui(self):
-        # ─ Contenedor principal con padding de 5 px arriba ─
         outer = tk.Frame(self, bg=BG, padx=18, pady=5)
         outer.pack(fill="both", expand=True)
 
-        # Título
         tk.Label(outer, text="🎙  Transcriptor de Audio",
                  font=FONT_TITLE, bg=BG, fg=TEXT).pack(anchor="w", pady=(0, 12))
 
-        # ── Sección: Archivo de audio ──
+        # ── Archivo de audio ──
         self._section(outer, "Archivo de audio")
         row_audio = tk.Frame(outer, bg=BG)
         row_audio.pack(fill="x", pady=(2, 8))
@@ -82,7 +90,7 @@ class TranscriptorApp(tk.Tk):
         self.lbl_audio.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 6))
         self._btn(row_audio, "Seleccionar…", self._pick_audio).pack(side="left")
 
-        # ── Sección: Carpeta de destino ──
+        # ── Carpeta de destino ──
         self._section(outer, "Carpeta de destino")
         row_out = tk.Frame(outer, bg=BG)
         row_out.pack(fill="x", pady=(2, 4))
@@ -94,7 +102,6 @@ class TranscriptorApp(tk.Tk):
                                               ipady=6, padx=(0, 6))
         self._btn(row_out, "Cambiar…", self._pick_folder).pack(side="left")
 
-        # Check abrir carpeta
         ck = tk.Checkbutton(outer, text="Abrir la carpeta al finalizar",
                             variable=self.open_folder,
                             font=FONT_MAIN, bg=BG, fg=TEXT,
@@ -102,7 +109,7 @@ class TranscriptorApp(tk.Tk):
                             relief="flat", cursor="hand2")
         ck.pack(anchor="w", pady=(2, 10))
 
-        # ── Sección: Modelo ──
+        # ── Modelo ──
         self._section(outer, "Modelo Whisper")
         model_frame = tk.Frame(outer, bg=BG)
         model_frame.pack(fill="x", pady=(2, 10))
@@ -121,13 +128,13 @@ class TranscriptorApp(tk.Tk):
 
         # ── Barra de progreso ──
         self.progress = ttk.Progressbar(outer, variable=self.progress_var,
-                                        maximum=100, mode="indeterminate",
+                                        maximum=100, mode="determinate",
                                         length=504)
         style = ttk.Style()
         style.theme_use("default")
         style.configure("TProgressbar", troughcolor=PROG_BG,
-                        background=ACCENT, thickness=6)
-        self.progress.pack(fill="x", pady=(0, 6))
+                        background=ACCENT, thickness=8)
+        self.progress.pack(fill="x", pady=(0, 4))
 
         # ── Estado ──
         self.lbl_status = tk.Label(outer, textvariable=self.status_msg,
@@ -140,7 +147,6 @@ class TranscriptorApp(tk.Tk):
                                  big=True, accent=True)
         self.btn_run.pack(fill="x", ipady=8)
 
-        # ── Pie ──
         tk.Label(outer, text="Procesado 100 % local · sin conexión a internet",
                  font=FONT_SMALL, bg=BG, fg=SUBTEXT).pack(pady=(8, 4))
 
@@ -179,8 +185,10 @@ class TranscriptorApp(tk.Tk):
     def _pick_audio(self):
         path = filedialog.askopenfilename(
             title="Seleccionar archivo de audio",
-            filetypes=[("Archivos de audio", "*.mp3 *.m4a *.wav *.ogg *.flac"),
-           ("Todos los archivos", "*.*")]
+            filetypes=[
+                ("Archivos de audio", "*.mp3 *.m4a *.wav *.ogg *.flac *.aac *.wma"),
+                ("Todos los archivos", "*.*"),
+            ]
         )
         if path:
             self.audio_path.set(path)
@@ -195,6 +203,34 @@ class TranscriptorApp(tk.Tk):
         self.status_msg.set(msg)
         self.lbl_status.configure(fg=color)
 
+    # ── Progreso ─────────────────────────────────────────────────────
+    def _update_progress(self, pct):
+        self.progress_var.set(pct)
+
+    def _start_timer(self, start_time, total_secs, speed_ratio):
+        """Tick cada segundo: actualiza el cronómetro y la barra de progreso estimada."""
+        import time
+        if not self._timer_active:
+            return
+        elapsed = time.time() - start_time
+        elapsed_int = int(elapsed)
+        em, es = divmod(elapsed_int, 60)
+
+        # Duración del audio en formato legible
+        am, a_s = divmod(int(total_secs), 60)
+
+        # Estimación de progreso basada en velocidad típica del modelo
+        expected_secs = total_secs / speed_ratio
+        pct = min(elapsed / expected_secs * 95, 95)   # tope en 95% hasta terminar
+        self._update_progress(pct)
+
+        self._set_status(
+            f"Transcribiendo…  ⏱ {em}m {es:02d}s transcurridos  "
+            f"(audio: {am}m {a_s:02d}s)",
+            ACCENT
+        )
+        self.after(1000, lambda: self._start_timer(start_time, total_secs, speed_ratio))
+
     # ── Transcripción ────────────────────────────────────────────────
     def _start(self):
         if self._running:
@@ -203,7 +239,7 @@ class TranscriptorApp(tk.Tk):
         audio = self.audio_path.get().strip()
         if not audio or not os.path.isfile(audio):
             messagebox.showwarning("Sin archivo",
-                                   "Por favor selecciona un archivo MP3 primero.")
+                                   "Por favor selecciona un archivo de audio primero.")
             return
         out_dir = self.output_dir.get().strip()
         if not out_dir:
@@ -212,7 +248,6 @@ class TranscriptorApp(tk.Tk):
             return
         os.makedirs(out_dir, exist_ok=True)
 
-        # Comprobar dependencias
         missing = ensure_packages()
         if missing:
             if messagebox.askyesno("Instalar dependencias",
@@ -241,34 +276,49 @@ class TranscriptorApp(tk.Tk):
         threading.Thread(target=worker, daemon=True).start()
 
     def _run_transcription(self, audio, out_dir):
-        self._running = True
+        import time
+
+        self._running      = True
+        self._timer_active = False
         self.btn_run.configure(fg="#AAAAAA", cursor="arrow")
-        self.progress.configure(mode="indeterminate")
-        self.progress.start(10)
+        self.progress_var.set(0)
         self._set_status("Cargando modelo Whisper…", ACCENT)
 
-        model_name = self.model_choice.get()
+        model_name  = self.model_choice.get()
+        speed_ratio = _MODEL_SPEED.get(model_name, 3.0)
 
         def worker():
             try:
-                # En .pyw no hay consola; stdout/stderr son None.
-                # tqdm (usado por Whisper) falla si intenta escribir en None.
                 import io
                 if sys.stdout is None:
                     sys.stdout = io.StringIO()
                 if sys.stderr is None:
                     sys.stderr = io.StringIO()
 
-                import whisper  # importación tardía tras instalación posible
+                import whisper
+
+                # Cargar audio para conocer la duración antes de transcribir
+                self.after(0, lambda: self._set_status(
+                    "Analizando audio…", ACCENT))
+                audio_array  = whisper.load_audio(audio)
+                total_secs   = len(audio_array) / whisper.audio.SAMPLE_RATE
 
                 self.after(0, lambda: self._set_status(
-                    f"Modelo '{model_name}' cargado. Transcribiendo…", ACCENT))
+                    f"Modelo '{model_name}' listo. Iniciando transcripción…", ACCENT))
+
+                # Arrancar cronómetro
+                start_time = time.time()
+                self._timer_active = True
+                self.after(1000, lambda: self._start_timer(
+                    start_time, total_secs, speed_ratio))
 
                 model  = whisper.load_model(model_name)
-                result = model.transcribe(audio, language="es",
-                                          verbose=False)
+                result = model.transcribe(audio_array, language="es", verbose=False)
 
-                # Extraer texto de forma segura
+                # Detener cronómetro
+                self._timer_active = False
+
+                # Extraer texto
                 if isinstance(result, dict):
                     text = result.get("text") or ""
                 else:
@@ -284,18 +334,19 @@ class TranscriptorApp(tk.Tk):
                     fh.write(text if text else "(sin texto detectado)")
 
                 self.after(0, lambda: self._on_done(out_txt))
+
             except Exception:
                 import traceback
+                self._timer_active = False
                 detail = traceback.format_exc()
                 self.after(0, lambda d=detail: self._on_error(d))
 
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_done(self, out_path):
-        self._running = False
-        self.progress.stop()
+        self._running      = False
+        self._timer_active = False
         self.progress_var.set(100)
-        self.progress.configure(mode="determinate")
         self._set_status(f"✔  Guardado en: {out_path}", SUCCESS)
         self.btn_run.configure(fg="#FFFFFF", cursor="hand2")
 
@@ -309,10 +360,10 @@ class TranscriptorApp(tk.Tk):
                 subprocess.Popen(["xdg-open", folder])
 
     def _on_error(self, msg):
-        self._running = False
-        self.progress.stop()
+        self._running      = False
+        self._timer_active = False
         self.progress_var.set(0)
-        self._set_status(f"✖  Error: {msg}", ERROR)
+        self._set_status(f"✖  Error: {msg[:80]}", ERROR)
         self.btn_run.configure(fg="#FFFFFF", cursor="hand2")
         messagebox.showerror("Error en la transcripción", msg)
 
