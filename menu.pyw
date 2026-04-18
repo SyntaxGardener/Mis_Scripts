@@ -621,7 +621,7 @@ class MenuFinalPerfecto:
             return "CLASES"
         if any(x in n for x in ["video", "audio", "caratula", "youtube", "subtitulo", "voz", "transcriptor", "mezclador"]):
             return "AUDIO & VÍDEO"
-        if any(x in n for x in ["imagen", "imágenes", "imagenes"]):
+        if any(x in n for x in ["imagen", "image"]):
             return "IMAGEN"
         if any(x in n for x in ["horario", "diligencia", "gestion",
                                   "certificado", "calculador", "diploma"]):
