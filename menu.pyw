@@ -17,12 +17,13 @@ ACENTO_FAV = "#ffd54f" # dorado para favoritos
 COLORES = {
     "FAVORITOS":      "#ffd54f",   # dorado
     "SISTEMA":        "#4dd0e1",   # cian
-    "PDF/DOCX":       "#ef5350",   # rojo
+    "PDF/DOCX/PPTX":  "#ef5350",   # rojo
+    "IMAGEN":         "#fff176",   # amarillo pastel
     "ADMINISTRACIÓN": "#9b59b6",   # púrpura
     "CLASES":         "#66bb6a",   # verde
     "AULA":           "#ff7f24",   # naranja
     "AUDIO & VÍDEO":  "#ec407a",   # rosa
-    "OTROS":          "#90a4ae",   # gris azulado
+    "OTROS":          "#8197a3",   # gris claro
 }
 
 def hacer_icono_carpeta(parent, color, bg):
@@ -615,11 +616,13 @@ class MenuFinalPerfecto:
                                   "cerrar", "portapapeles", "organizador"]):
             return "SISTEMA"
         if any(x in n for x in ["pdf", "informe", "word", "doc", "tabla", "format", "docx"]):
-            return "PDF/DOCX"
+            return "PDF/DOCX/PPTX"
         if any(x in n for x in ["examen", "apuntes", "resumen", "presentacion", "timeline", "notas"]):
             return "CLASES"
         if any(x in n for x in ["video", "audio", "caratula", "youtube", "subtitulo", "voz", "transcriptor", "mezclador"]):
             return "AUDIO & VÍDEO"
+        if any(x in n for x in ["imagen", "imágenes", "imagenes"]):
+            return "IMAGEN"
         if any(x in n for x in ["horario", "diligencia", "gestion",
                                   "certificado", "calculador", "diploma"]):
             return "ADMINISTRACIÓN"
