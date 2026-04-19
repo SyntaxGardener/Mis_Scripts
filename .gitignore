@@ -9,6 +9,7 @@ __pycache__/
 *.exe
 *.dll
 *.so
+*.json
 
 # --- Archivos de Salida de tus Scripts ---
 # Ignoramos los resultados (videos, música, pdfs) para que no pesen en la nube
