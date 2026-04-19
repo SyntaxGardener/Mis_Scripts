@@ -30,6 +30,7 @@ WARN_FG     = "#b45309"
 STORAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "notebooklm_auth.json")
 
 NAV = [
+    ("login",     "🔑", "Login"),
     ("listar",    "📚", "Notebooks"),
     ("nuevo",     "📒", "Nuevo"),
     ("fuentes",   "📎", "Fuentes"),
@@ -87,7 +88,11 @@ class App:
         self.content.pack(side="left", fill="both", expand=True)
 
         self._init_secciones()
-        self.mostrar("listar")
+        # Mostrar login si aún no hay auth guardada en el USB
+        if os.path.exists(STORAGE):
+            self.mostrar("listar")
+        else:
+            self.mostrar("login")
 
     # ── Sidebar ──────────────────────────────────────────────────────────────
 
@@ -199,11 +204,112 @@ class App:
     # ── Secciones ────────────────────────────────────────────────────────────
 
     def _init_secciones(self):
+        self.secciones["login"]     = self._sec_login()
         self.secciones["listar"]    = self._sec_listar()
         self.secciones["nuevo"]     = self._sec_nuevo()
         self.secciones["fuentes"]   = self._sec_fuentes()
         self.secciones["generar"]   = self._sec_generar()
         self.secciones["descargar"] = self._sec_descargar()
+
+    # ·· Login ················································
+
+    def _sec_login(self):
+        f = tk.Frame(self.content, bg=BG_CONTENT)
+        c = self._card(f, "🔑  Login con Google")
+
+        # Estado actual
+        self.lbl_auth_status = tk.Label(c, bg=BG_CARD, font=("Segoe UI", 10))
+        self.lbl_auth_status.pack(anchor="w", pady=(0, 10))
+        self._actualizar_estado_auth()
+
+        # Explicación
+        info = (
+            "Al pulsar 'Iniciar Login' se abrirá Chrome.\n"
+            "1. Inicia sesión con tu cuenta de Google.\n"
+            "2. Espera a ver la página principal de NotebookLM.\n"
+            "3. Vuelve aquí y pulsa 'Guardar sesión en USB'."
+        )
+        tk.Label(c, text=info, bg=BG_CARD, fg=FG_DIM,
+                 font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=(0, 12))
+
+        btn_login = self._btn(c, "🌐  Iniciar Login", lambda: self._hacer_login(btn_login, btn_guardar))
+        btn_login.pack(fill="x", pady=(0, 6))
+
+        btn_guardar = self._btn(c, "💾  Guardar sesión en USB", lambda: self._guardar_auth(btn_guardar))
+        btn_guardar.pack(fill="x")
+        btn_guardar.config(state="disabled", bg="#94a3b8")  # deshabilitado hasta que se haga login
+
+        self.out_login = self._out(f)
+        return f
+
+    def _actualizar_estado_auth(self):
+        if os.path.exists(STORAGE):
+            self.lbl_auth_status.config(
+                text=f"✅  Sesión guardada en USB  ({os.path.basename(STORAGE)})",
+                fg=SUCCESS_FG)
+        else:
+            self.lbl_auth_status.config(
+                text="⚠️  No hay sesión guardada en el USB todavía.",
+                fg=WARN_FG)
+
+    def _hacer_login(self, btn_login, btn_guardar):
+        """Lanza notebooklm login en un hilo y habilita el botón guardar al terminar."""
+        btn_login.config(state="disabled", text="Abriendo navegador…")
+        btn_guardar.config(state="disabled", bg="#94a3b8")
+
+        def _run():
+            import subprocess
+            try:
+                subprocess.run(["notebooklm", "login"], check=False)
+            except FileNotFoundError:
+                pass
+            self.root.after(0, lambda: (
+                btn_login.config(state="normal", text="🌐  Iniciar Login"),
+                btn_guardar.config(state="normal", bg=ACCENT),
+                self._log_ok(self.out_login,
+                             "✅ Navegador cerrado. Pulsa 'Guardar sesión en USB'.")
+            ))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _guardar_auth(self, btn_guardar):
+        """Copia storage_state.json desde el perfil de Windows al USB."""
+        import shutil, glob
+
+        # Buscar el archivo que notebooklm guarda en el perfil de Windows
+        posibles = [
+            os.path.join(os.environ.get("USERPROFILE", ""), ".notebooklm", "storage_state.json"),
+            os.path.join(os.environ.get("APPDATA", ""),    ".notebooklm", "storage_state.json"),
+        ]
+        # También buscar por si está en otro lugar
+        extra = glob.glob(os.path.join(os.environ.get("USERPROFILE", ""),
+                                       ".notebooklm", "*.json"))
+        posibles += extra
+
+        origen = None
+        for p in posibles:
+            if os.path.exists(p):
+                origen = p
+                break
+
+        out = self.out_login
+        if not origen:
+            out.config(state="normal")
+            out.insert("end", "❌ No se encontró el archivo de sesión en C:\\.\n"
+                               "   ¿Completaste el login en el navegador?\n", "err")
+            out.config(state="disabled")
+            return
+
+        try:
+            import shutil
+            shutil.copy2(origen, STORAGE)
+            self._actualizar_estado_auth()
+            self._log_ok(out, f"✅ Sesión copiada al USB:\n   {STORAGE}")
+            btn_guardar.config(state="disabled", bg="#94a3b8")
+        except Exception as e:
+            out.config(state="normal")
+            out.insert("end", f"❌ Error al copiar: {e}\n", "err")
+            out.config(state="disabled")
 
     # ·· Notebooks ············································
 
