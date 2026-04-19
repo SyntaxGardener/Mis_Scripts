@@ -5,7 +5,7 @@ pip install notebooklm-py
 """
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
-import subprocess, threading, os
+import subprocess, threading, os, re
 
 try:
     import notebooklm as _nlm  # pip install notebooklm-py  (solo para que lo detecte el analizador)
@@ -54,8 +54,12 @@ def run_cmd(cmd, out, on_done=None):
 
     def _run():
         try:
+            env = os.environ.copy()
+            env["PYTHONIOENCODING"] = "utf-8"
+            env["PYTHONUTF8"] = "1"
+            env["COLUMNS"] = "300"
             r = subprocess.run(cmd, capture_output=True, text=True,
-                               encoding="utf-8", errors="replace")
+                               encoding="utf-8", errors="replace", env=env)
             _log((r.stdout or "") + (r.stderr or ""))
             if on_done:
                 on_done(r.returncode == 0)
@@ -74,21 +78,21 @@ class App:
         root.title("NotebookLM Toolbox")
         root.configure(bg=BG_ROOT)
         w, h = 900, 640
-        x = (root.winfo_screenwidth()  // 2) - (w // 2)
-        y = (root.winfo_screenheight() // 2) - (h // 2)
+        x = (root.winfo_screenwidth() // 2) - (w // 2)
+        y = 5
         root.geometry(f"{w}x{h}+{x}+{y}")
         root.minsize(700, 500)
 
-        self.nav_btns   = {}
-        self.secciones  = {}
+        self.nav_btns    = {}
+        self.secciones   = {}
         self.seccion_act = None
+        self.nb_id       = ""
 
         self._build_sidebar()
         self.content = tk.Frame(root, bg=BG_CONTENT)
         self.content.pack(side="left", fill="both", expand=True)
 
         self._init_secciones()
-        # Mostrar login si aún no hay auth guardada en el USB
         if os.path.exists(STORAGE):
             self.mostrar("listar")
         else:
@@ -160,7 +164,7 @@ class App:
         tk.Label(card, text=titulo, fg=FG_MAIN, bg=BG_CARD,
                  font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=16, pady=(12, 4))
         inner = tk.Frame(card, bg=BG_CARD)
-        inner.pack(fill="x", padx=16, pady=(0, 14))
+        inner.pack(fill="both", expand=True, padx=16, pady=(0, 14))
         return inner
 
     def _out(self, parent):
@@ -201,6 +205,16 @@ class App:
         out.insert("end", msg + "\n", "ok")
         out.config(state="disabled")
 
+    def _get_nb_id(self):
+        nid = self.nb_id.strip()
+        if not nid:
+            messagebox.showwarning(
+                "Sin notebook activo",
+                "Primero ve a 📚 Notebooks, pega el ID y pulsa ✓ Usar.",
+                parent=self.root)
+            return None
+        return nid
+
     # ── Secciones ────────────────────────────────────────────────────────────
 
     def _init_secciones(self):
@@ -217,12 +231,10 @@ class App:
         f = tk.Frame(self.content, bg=BG_CONTENT)
         c = self._card(f, "🔑  Login con Google")
 
-        # Estado actual
         self.lbl_auth_status = tk.Label(c, bg=BG_CARD, font=("Segoe UI", 10))
         self.lbl_auth_status.pack(anchor="w", pady=(0, 10))
         self._actualizar_estado_auth()
 
-        # Explicación
         info = (
             "Al pulsar 'Iniciar Login' se abrirá Chrome.\n"
             "1. Inicia sesión con tu cuenta de Google.\n"
@@ -232,12 +244,14 @@ class App:
         tk.Label(c, text=info, bg=BG_CARD, fg=FG_DIM,
                  font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=(0, 12))
 
-        btn_login = self._btn(c, "🌐  Iniciar Login", lambda: self._hacer_login(btn_login, btn_guardar))
+        btn_login = self._btn(c, "🌐  Iniciar Login",
+                              lambda: self._hacer_login(btn_login, btn_guardar))
         btn_login.pack(fill="x", pady=(0, 6))
 
-        btn_guardar = self._btn(c, "💾  Guardar sesión en USB", lambda: self._guardar_auth(btn_guardar))
+        btn_guardar = self._btn(c, "💾  Guardar sesión en USB",
+                                lambda: self._guardar_auth(btn_guardar))
         btn_guardar.pack(fill="x")
-        btn_guardar.config(state="disabled", bg="#94a3b8")  # deshabilitado hasta que se haga login
+        btn_guardar.config(state="disabled", bg="#94a3b8")
 
         self.out_login = self._out(f)
         return f
@@ -253,12 +267,10 @@ class App:
                 fg=WARN_FG)
 
     def _hacer_login(self, btn_login, btn_guardar):
-        """Lanza notebooklm login en un hilo y habilita el botón guardar al terminar."""
         btn_login.config(state="disabled", text="Abriendo navegador…")
         btn_guardar.config(state="disabled", bg="#94a3b8")
 
         def _run():
-            import subprocess
             try:
                 subprocess.run(["notebooklm", "login"], check=False)
             except FileNotFoundError:
@@ -273,25 +285,15 @@ class App:
         threading.Thread(target=_run, daemon=True).start()
 
     def _guardar_auth(self, btn_guardar):
-        """Copia storage_state.json desde el perfil de Windows al USB."""
         import shutil, glob
-
-        # Buscar el archivo que notebooklm guarda en el perfil de Windows
         posibles = [
             os.path.join(os.environ.get("USERPROFILE", ""), ".notebooklm", "storage_state.json"),
             os.path.join(os.environ.get("APPDATA", ""),    ".notebooklm", "storage_state.json"),
         ]
-        # También buscar por si está en otro lugar
         extra = glob.glob(os.path.join(os.environ.get("USERPROFILE", ""),
                                        ".notebooklm", "*.json"))
         posibles += extra
-
-        origen = None
-        for p in posibles:
-            if os.path.exists(p):
-                origen = p
-                break
-
+        origen = next((p for p in posibles if os.path.exists(p)), None)
         out = self.out_login
         if not origen:
             out.config(state="normal")
@@ -299,9 +301,7 @@ class App:
                                "   ¿Completaste el login en el navegador?\n", "err")
             out.config(state="disabled")
             return
-
         try:
-            import shutil
             shutil.copy2(origen, STORAGE)
             self._actualizar_estado_auth()
             self._log_ok(out, f"✅ Sesión copiada al USB:\n   {STORAGE}")
@@ -318,23 +318,54 @@ class App:
         c = self._card(f, "📚  Notebooks · Listar y seleccionar")
 
         row = tk.Frame(c, bg=BG_CARD)
-        row.pack(fill="x", pady=(0, 8))
+        row.pack(fill="x", pady=(0, 4))
         self._lbl(row, "Notebook activo — ID:").pack(side="left")
         self.ent_nb_id = self._entry(row, width=30)
         self.ent_nb_id.pack(side="left", padx=8)
 
+        self.lbl_nb_activo = tk.Label(row, text="", fg=SUCCESS_FG, bg=BG_CARD,
+                                      font=("Segoe UI", 9))
+        self.lbl_nb_activo.pack(side="left")
+
         def usar():
             nid = self.ent_nb_id.get().strip()
             if nid:
-                run_cmd(["notebooklm", "use", nid], self.out_listar)
+                self.nb_id = nid
+                self.lbl_nb_activo.config(text="✅ Activo")
+                self._log_ok(self.out_listar, f"✅ Notebook activo: {nid}")
             else:
                 messagebox.showwarning("Aviso", "Introduce un ID", parent=self.root)
 
         self._btn(row, "✓  Usar", usar).pack(side="left")
+
+        # Hint clic
+        tk.Label(c, text="💡 Haz clic en una línea del resultado para seleccionar su ID automáticamente",
+                 fg=FG_DIM, bg=BG_CARD, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+
         self._btn(c, "🔄  Listar todos los notebooks",
                   lambda: run_cmd(["notebooklm", "list"], self.out_listar)).pack(fill="x")
 
         self.out_listar = self._out(f)
+
+        # Clic en resultado → extraer UUID y ponerlo en el campo
+        UUID_RE = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
+                             re.IGNORECASE)
+
+        def _clic_resultado(event):
+            widget = event.widget
+            idx = widget.index(f"@{event.x},{event.y}")
+            linea = widget.get(f"{idx} linestart", f"{idx} lineend")
+            m = UUID_RE.search(linea)
+            if m:
+                nid = m.group(0)
+                self.ent_nb_id.delete(0, "end")
+                self.ent_nb_id.insert(0, nid)
+                self.nb_id = nid
+                self.lbl_nb_activo.config(text="✅ Activo")
+                self._log_ok(self.out_listar, f"✅ Notebook activo: {nid}")
+
+        self.out_listar.bind("<Button-1>", _clic_resultado)
+
         self.root.after(400, lambda: run_cmd(["notebooklm", "list"], self.out_listar))
         return f
 
@@ -417,6 +448,8 @@ class App:
         _cambiar()
 
         def añadir():
+            nid = self._get_nb_id()
+            if not nid: return
             if tipo_var.get() == "url":
                 src = ent_url.get().strip()
                 if not src:
@@ -431,7 +464,8 @@ class App:
             def done(ok):
                 self.root.after(0, lambda: btn_add.config(state="normal", text="➕  Añadir fuente"))
                 if ok: self._log_ok(self.out_fuentes, "✅ Fuente añadida.")
-            run_cmd(["notebooklm", "source", "add", src], self.out_fuentes, on_done=done)
+            run_cmd(["notebooklm", "source", "add", src, "--notebook", nid],
+                    self.out_fuentes, on_done=done)
 
         btn_add = self._btn(c, "➕  Añadir fuente", añadir)
         btn_add.pack(fill="x")
@@ -443,12 +477,12 @@ class App:
     def _sec_generar(self):
         TIPOS = {
             "🎙  Podcast":      ("audio",      [("Formato",      ["deep-dive","brief","critique","debate"], "--format"),
-                                                 ("Duración",     ["short","medium","long"],                 "--length")], True),
+                                                 ("Duración",     ["short","default","long"],                 "--length")], True),
             "📝  Quiz":         ("quiz",        [("Dificultad",   ["easy","medium","hard"],                  "--difficulty"),
                                                  ("Cantidad",     ["fewer","default","more"],                 "--quantity")], False),
             "🃏  Flashcards":   ("flashcards",  [("Dificultad",   ["easy","medium","hard"],                  "--difficulty"),
                                                  ("Cantidad",     ["fewer","default","more"],                 "--quantity")], False),
-            "📄  Informe":      ("report",      [("Plantilla",    ["briefing","study-guide","blog-post"],     "--format")],   True),
+            "📄  Informe":      ("report",      [("Plantilla",    ["briefing-doc","study-guide","blog-post","custom"],     "--format")],   True),
             "🗺  Mapa Mental":  ("mind-map",    [], True),
             "📊  Presentación": ("slide-deck",  [("Detalle",      ["detailed","presenter"],                  "--format")],   True),
             "🖼  Infografía":   ("infographic", [("Orientación",  ["portrait","landscape","square"],          "--orientation")], True),
@@ -494,21 +528,77 @@ class App:
         combo_tipo.bind("<<ComboboxSelected>>", actualizar)
         actualizar()
 
+        # Idioma
+        lang_row = tk.Frame(c, bg=BG_CARD)
+        lang_row.pack(fill="x", pady=(0, 6))
+        self._lbl(lang_row, "Idioma:", w=100).pack(side="left")
+        ent_lang = ttk.Combobox(lang_row, values=["es","en","fr","de","it","pt","ja","ko","zh"], font=("Segoe UI", 10), width=10)
+        ent_lang.set("es")
+        ent_lang.pack(side="left", padx=(0, 6))
+
+        btn_gen = self._btn(c, "▶  Generar", None)
+        btn_gen.pack(fill="x")
+
         def generar():
-            cmd_name, _, wait = TIPOS[combo_tipo.get()]
-            cmd = ["notebooklm", "generate", cmd_name]
+            nid = self._get_nb_id()
+            if not nid: return
+            lang = ent_lang.get().strip() or "es"
+            cmd_name, _, _ = TIPOS[combo_tipo.get()]
+            cmd = ["notebooklm", "generate", cmd_name, "--notebook", nid,
+                   "--language", lang, "--no-wait"]
             for flag, cb in combos_opts.items():
                 cmd += [flag, cb.get()]
-            if wait:
-                cmd.append("--wait")
-            btn_gen.config(state="disabled", text="Generando… ⏳")
+            btn_gen.config(state="disabled", text="Lanzando… ⏳")
             def done(ok):
                 self.root.after(0, lambda: btn_gen.config(state="normal", text="▶  Generar"))
-                if ok: self._log_ok(self.out_generar, "✅ Completado. Ve a Descargar para guardarlo.")
+                if ok: self._log_ok(self.out_generar,
+                                    "✅ Tarea lanzada. Espera unos minutos y descarga desde ⬇ Descargar.")
             run_cmd(cmd, self.out_generar, on_done=done)
 
-        btn_gen = self._btn(c, "▶  Generar", generar)
-        btn_gen.pack(fill="x")
+        btn_gen.config(command=generar)
+
+        # ── Estado de tarea ──────────────────────────────────
+        task_row = tk.Frame(c, bg=BG_CARD)
+        task_row.pack(fill="x", pady=(6, 0))
+        self._lbl(task_row, "Task ID:", w=100).pack(side="left")
+        self.ent_task_id = self._entry(task_row)
+        self.ent_task_id.pack(side="left", fill="x", expand=True, padx=(0, 6))
+
+        def ver_estado():
+            tid = self.ent_task_id.get().strip()
+            if tid:
+                run_cmd(["notebooklm", "artifact", "poll", tid], self.out_generar)
+            else:
+                nid = self._get_nb_id()
+                if nid:
+                    run_cmd(["notebooklm", "artifact", "list", "--notebook", nid], self.out_generar)
+
+        self._btn(task_row, "🔍 Ver estado", ver_estado).pack(side="left")
+
+        # Auto-capturar el task ID de la salida al generar
+        _orig_generar = generar
+        def generar_con_capture():
+            _orig_generar()
+            # Monitorizar la salida para extraer el task ID
+            def _watch():
+                import time, re
+                for _ in range(30):
+                    time.sleep(0.3)
+                    self.out_generar.config(state="normal")
+                    texto = self.out_generar.get("1.0", "end")
+                    self.out_generar.config(state="disabled")
+                    m = re.search(r"Started:\s*([0-9a-f-]{36})", texto)
+                    if m:
+                        tid = m.group(1)
+                        self.root.after(0, lambda t=tid: (
+                            self.ent_task_id.delete(0, "end"),
+                            self.ent_task_id.insert(0, t)
+                        ))
+                        break
+            threading.Thread(target=_watch, daemon=True).start()
+
+        btn_gen.config(command=generar_con_capture)
+
         self.out_generar = self._out(f)
         return f
 
@@ -523,6 +613,7 @@ class App:
             "🗺  Mapa Mental":  ("mind-map",    ".json", [("JSON","*.json")],                                    None),
             "🖼  Infografía":   ("infographic", ".png",  [("PNG","*.png")],                                      None),
             "📋  Tabla datos":  ("data-table",  ".csv",  [("CSV","*.csv")],                                      None),
+            "📄  Informe":      ("report",      ".md",   [("Markdown","*.md")],                                   None),
             "🎬  Vídeo":        ("video",       ".mp4",  [("MP4","*.mp4")],                                      None),
         }
 
@@ -559,6 +650,15 @@ class App:
         combo_art.bind("<<ComboboxSelected>>", actualizar_fmt)
         actualizar_fmt()
 
+        # Filtro por nombre (opcional)
+        r_name = tk.Frame(c, bg=BG_CARD)
+        r_name.pack(fill="x", pady=(0, 6))
+        self._lbl(r_name, "Nombre:", w=100).pack(side="left")
+        ent_name = self._entry(r_name)
+        ent_name.pack(side="left", fill="x", expand=True)
+        tk.Label(r_name, text="  (opcional, busca por título)", fg=FG_DIM, bg=BG_CARD,
+                 font=("Segoe UI", 8)).pack(side="left")
+
         # Destino
         r3 = tk.Frame(c, bg=BG_CARD)
         r3.pack(fill="x", pady=(0, 10))
@@ -580,11 +680,16 @@ class App:
                   command=examinar).pack(side="left", padx=(6, 0))
 
         def descargar():
+            nid = self._get_nb_id()
+            if not nid: return
             dest = ent_dest.get().strip()
             if not dest:
                 messagebox.showwarning("Aviso", "Elige dónde guardar", parent=self.root); return
             art = ARTS[combo_art.get()]
-            cmd = ["notebooklm", "download", art[0]]
+            cmd = ["notebooklm", "download", art[0], "--notebook", nid]
+            nombre = ent_name.get().strip()
+            if nombre:
+                cmd += ["--name", nombre]
             if self._combo_fmt:
                 cmd += ["--format", self._combo_fmt.get()]
             cmd.append(dest)
