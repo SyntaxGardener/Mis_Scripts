@@ -66,6 +66,7 @@ LIBRERIAS_BASE = [
     ("cloudscraper",      "cloudscraper",      "Extraer datos web",          False),
     ("selenium",          "selenium",          "Automatización Navegadores", False),
     ("webdriver_manager", "webdriver-manager", "Gestión Drivers Selenium",   False),
+    ("notebooklm",        "notebooklm-py",     "Notebook LM",                False),
     ("pygame",            "pygame",            "Reproducción Audio",         False),
 ]
 

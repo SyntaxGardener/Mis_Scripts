@@ -13,6 +13,7 @@ RAIZ_PORTABLE   = os.path.dirname(CARPETA_SCRIPTS)
 
 # Diccionario de traducción: 'nombre_en_codigo_lowercase': 'nombre_en_pip'
 MAPEO = {
+    'notebooklm':               'notebooklm-py',
     'pil':                      'Pillow',
     'fitz':                     'pymupdf',
     'docx':                     'python-docx',
@@ -128,16 +129,15 @@ def analizar_y_generar():
                 if mod and mod.lower() not in LIBRERIAS_ESTANDAR:
                     importados.add(mod)
 
-            if importados:
-                res = []
-                for m in sorted(importados):
-                    try:
-                        spec = importlib.util.find_spec(m) or importlib.util.find_spec(m.lower())
-                        instalado = spec is not None
-                    except Exception:
-                        instalado = False
-                    res.append({"nombre": m, "instalado": instalado})
-                base_datos[arc] = res
+            res = []
+            for m in sorted(importados):
+                try:
+                    spec = importlib.util.find_spec(m) or importlib.util.find_spec(m.lower())
+                    instalado = spec is not None
+                except Exception:
+                    instalado = False
+                res.append({"nombre": m, "instalado": instalado})
+            base_datos[arc] = res
         except Exception:
             pass
 
@@ -386,6 +386,10 @@ def dibujar():
         total_ok        = total_libs - total_faltantes
 
         for arc, libs in base_datos.items():
+            if not libs:
+                caja.insert("end", f"📄 {arc}  (solo stdlib)\n", "h")
+                caja.insert("end", "\n")
+                continue
             n_ok    = sum(1 for l in libs if l['instalado'])
             n_falta = len(libs) - n_ok
             resumen = f"  ({n_ok} OK" + (f", {n_falta} FALTAN" if n_falta else "") + ")"
