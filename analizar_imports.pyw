@@ -93,40 +93,39 @@ LIBRERIAS_ESTANDAR = {
     'weakref', 'contextlib', 'atexit', 'builtins', 'site', 'token', 'tokenize',
 }
 
-base_datos = {}
+# Dependencias implícitas: si se detecta la clave, se añaden sus valores automáticamente
+# aunque no aparezcan con import en el script analizado
+DEPENDENCIAS_IMPLICITAS = {
+    'notebooklm': ['playwright'],
+}
 
-# --- COMPROBACIONES ESPECIALES ---
-# Algunas librerías necesitan más que solo estar instaladas (ej: Playwright necesita sus navegadores)
-
-def playwright_browsers_ok():
-    """Devuelve True solo si playwright está instalado Y tiene al menos un navegador descargado."""
+def playwright_navegadores_ok():
+    """True solo si playwright está instalado Y tiene al menos un navegador descargado."""
     try:
-        spec = importlib.util.find_spec("playwright")
-        if spec is None:
-            return False  # ni siquiera la librería está instalada
-        # Buscar la carpeta de navegadores en las rutas habituales
+        if importlib.util.find_spec("playwright") is None:
+            return False
         import pathlib
         posibles = [
             pathlib.Path(os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "")),
             pathlib.Path(os.environ.get("LOCALAPPDATA", "")) / "ms-playwright",
             pathlib.Path(os.environ.get("USERPROFILE", "")) / ".cache" / "ms-playwright",
-            # También junto al propio Python del WinPython (si se instaló con --path)
             pathlib.Path(sys.executable).parent.parent / "playwright_browsers",
             pathlib.Path(sys.executable).parent.parent / "ms-playwright",
         ]
         for carpeta in posibles:
             if carpeta and carpeta.exists():
-                # Comprobar que hay al menos un ejecutable de navegador dentro
-                for ext in ("chromium*", "firefox*", "webkit*"):
-                    if any(carpeta.rglob(ext)):
-                        return True
-        return False  # librería instalada pero sin navegadores
+                if any(carpeta.rglob("chrome*")) or any(carpeta.rglob("chromium*")):
+                    return True
+        return False
     except Exception:
         return False
 
+# Comprobaciones especiales: sustituyen a find_spec para ciertas librerías
 COMPROBACIONES_ESPECIALES = {
-    'playwright': playwright_browsers_ok,
+    'playwright': playwright_navegadores_ok,
 }
+
+base_datos = {}
 
 # --- 2. MOTOR DE BÚSQUEDA ---
 
@@ -163,9 +162,15 @@ def analizar_y_generar():
                 if mod and mod.lower() not in LIBRERIAS_ESTANDAR:
                     importados.add(mod)
 
+            # Inyectar dependencias implícitas
+            extras = set()
+            for m in importados:
+                for dep in DEPENDENCIAS_IMPLICITAS.get(m.lower(), []):
+                    extras.add(dep)
+            importados |= extras
+
             res = []
             for m in sorted(importados):
-                # Usar comprobación especial si existe, si no la normal
                 fn_especial = COMPROBACIONES_ESPECIALES.get(m.lower())
                 if fn_especial:
                     instalado = fn_especial()
@@ -183,40 +188,36 @@ def analizar_y_generar():
 # --- 3. ACCIONES ---
 
 def instalar():
-    faltantes = {
-        MAPEO.get(l['nombre'].lower(), l['nombre'])
-        for lista in base_datos.values()
-        for l in lista
-        if not l['instalado']
-    }
+    faltantes_pip = set()
+    necesita_playwright_browsers = False
 
-    # Detectar si playwright necesita solo los navegadores (librería ya instalada)
-    playwright_solo_navegadores = False
-    try:
-        spec = importlib.util.find_spec("playwright")
-        if spec is not None and 'playwright' in faltantes:
-            playwright_solo_navegadores = True
-            faltantes.discard('playwright')  # no hace falta pip install
-    except Exception:
-        pass
+    for lista in base_datos.values():
+        for l in lista:
+            if not l['instalado']:
+                nombre = l['nombre'].lower()
+                if nombre == 'playwright':
+                    # ¿Falta la librería o solo los navegadores?
+                    try:
+                        lib_ok = importlib.util.find_spec("playwright") is not None
+                    except Exception:
+                        lib_ok = False
+                    if not lib_ok:
+                        faltantes_pip.add('playwright')
+                    necesita_playwright_browsers = True
+                else:
+                    faltantes_pip.add(MAPEO.get(nombre, l['nombre']))
 
-    py_exe  = sys.executable.lower().replace("pythonw.exe", "python.exe")
-
-    comandos = []
-    if faltantes:
-        libs = " ".join(sorted(faltantes))
-        comandos.append(f'"{py_exe}" -m pip install {libs}')
-    if playwright_solo_navegadores:
-        comandos.append(f'"{py_exe}" -m playwright install chromium')
-    elif 'playwright' in {MAPEO.get(l['nombre'].lower(), l['nombre'])
-                          for lista in base_datos.values()
-                          for l in lista if not l['instalado']}:
-        # playwright no instalado en absoluto: pip + navegadores
-        comandos.append(f'"{py_exe}" -m playwright install chromium')
-
-    if not comandos:
+    if not faltantes_pip and not necesita_playwright_browsers:
         messagebox.showinfo("Todo OK", "Todas las librerías están instaladas. ✅")
         return
+
+    py_exe = sys.executable.lower().replace("pythonw.exe", "python.exe")
+    comandos = []
+    if faltantes_pip:
+        libs = " ".join(sorted(faltantes_pip))
+        comandos.append(f'"{py_exe}" -m pip install {libs}')
+    if necesita_playwright_browsers:
+        comandos.append(f'"{py_exe}" -m playwright install chromium')
 
     cmd_completo = " & ".join(comandos)
     try:
@@ -458,15 +459,14 @@ def dibujar():
                 etiqueta = "[OK]    " if l['instalado'] else "[FALTA] "
                 pip_name = MAPEO.get(l['nombre'].lower(), l['nombre'])
                 pip_info = f"  → pip: {pip_name}" if pip_name.lower() != l['nombre'].lower() else ""
-                # Nota especial para playwright sin navegadores
-                nota_extra = ""
+                nota = ""
                 if not l['instalado'] and l['nombre'].lower() == 'playwright':
                     try:
-                        if importlib.util.find_spec("playwright") is not None:
-                            nota_extra = "  ⚠ librería OK pero faltan navegadores (playwright install chromium)"
+                        lib_ok = importlib.util.find_spec("playwright") is not None
                     except Exception:
-                        pass
-                caja.insert("end", f"  {etiqueta} {l['nombre']}{pip_info}{nota_extra}\n",
+                        lib_ok = False
+                    nota = "  (librería OK, faltan navegadores)" if lib_ok else "  (librería + navegadores)"
+                caja.insert("end", f"  {etiqueta} {l['nombre']}{pip_info}{nota}\n",
                             "ok" if l['instalado'] else "err")
             caja.insert("end", "\n")
 
