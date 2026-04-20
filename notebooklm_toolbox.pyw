@@ -272,39 +272,53 @@ class App:
 
         def _run():
             try:
-                subprocess.run(["notebooklm", "login"], check=False)
+                subprocess.run(["notebooklm", "login", "--storage", STORAGE], check=False)
             except FileNotFoundError:
                 pass
-            self.root.after(0, lambda: (
-                btn_login.config(state="normal", text="🌐  Iniciar Login"),
-                btn_guardar.config(state="normal", bg=ACCENT),
-                self._log_ok(self.out_login,
-                             "✅ Navegador cerrado. Pulsa 'Guardar sesión en USB'.")
-            ))
+            sesion_ok = os.path.exists(STORAGE)
+            def _after():
+                btn_login.config(state="normal", text="🌐  Iniciar Login")
+                self._actualizar_estado_auth()
+                if sesion_ok:
+                    self._log_ok(self.out_login,
+                                 f"✅ Sesión guardada en:\n   {STORAGE}")
+                    btn_guardar.config(state="disabled", bg="#94a3b8")
+                else:
+                    self.out_login.config(state="normal")
+                    self.out_login.insert("end",
+                        "⚠️  No se generó el archivo de sesión.\n"
+                        "   Prueba el botón 'Guardar sesión' si cerraste el navegador\n"
+                        "   sin que apareciera la página principal de NotebookLM.\n", "err")
+                    self.out_login.config(state="disabled")
+                    btn_guardar.config(state="normal", bg=ACCENT)
+            self.root.after(0, _after)
 
         threading.Thread(target=_run, daemon=True).start()
 
     def _guardar_auth(self, btn_guardar):
         import shutil, glob
         posibles = [
-            os.path.join(os.environ.get("USERPROFILE", ""), ".notebooklm", "storage_state.json"),
-            os.path.join(os.environ.get("APPDATA", ""),    ".notebooklm", "storage_state.json"),
+            os.path.join(os.environ.get("USERPROFILE",   ""), ".notebooklm", "storage_state.json"),
+            os.path.join(os.environ.get("APPDATA",       ""), ".notebooklm", "storage_state.json"),
+            os.path.join(os.environ.get("LOCALAPPDATA",  ""), ".notebooklm", "storage_state.json"),
         ]
         extra = glob.glob(os.path.join(os.environ.get("USERPROFILE", ""),
                                        ".notebooklm", "*.json"))
         posibles += extra
-        origen = next((p for p in posibles if os.path.exists(p)), None)
+        # Filtrar el propio STORAGE para no copiarlo sobre sí mismo
+        posibles = [p for p in posibles if os.path.exists(p) and os.path.abspath(p) != os.path.abspath(STORAGE)]
+        origen = posibles[0] if posibles else None
         out = self.out_login
         if not origen:
             out.config(state="normal")
-            out.insert("end", "❌ No se encontró el archivo de sesión en C:\\.\n"
+            out.insert("end", "❌ No se encontró el archivo de sesión.\n"
                                "   ¿Completaste el login en el navegador?\n", "err")
             out.config(state="disabled")
             return
         try:
             shutil.copy2(origen, STORAGE)
             self._actualizar_estado_auth()
-            self._log_ok(out, f"✅ Sesión copiada al USB:\n   {STORAGE}")
+            self._log_ok(out, f"✅ Sesión guardada en:\n   {STORAGE}")
             btn_guardar.config(state="disabled", bg="#94a3b8")
         except Exception as e:
             out.config(state="normal")
