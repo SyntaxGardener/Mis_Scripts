@@ -505,21 +505,22 @@ class App:
 
         f = tk.Frame(self.content, bg=BG_CONTENT)
         c = self._card(f, "⚙  Generar Contenido")
+        c.columnconfigure(1, weight=1)
 
         # Tipo
-        t_row = tk.Frame(c, bg=BG_CARD)
-        t_row.pack(fill="x", pady=(0, 8))
-        self._lbl(t_row, "¿Qué generar?").pack(side="left")
-        combo_tipo = ttk.Combobox(t_row, values=list(TIPOS.keys()),
-                                   state="readonly", font=("Segoe UI", 10), width=26)
+        self._lbl(c, "¿Qué generar?").grid(row=0, column=0, sticky="w", pady=(0, 6), padx=(0, 10))
+        combo_tipo = ttk.Combobox(c, values=list(TIPOS.keys()),
+                                   state="readonly", font=("Segoe UI", 10))
         combo_tipo.current(0)
-        combo_tipo.pack(side="left", padx=8)
+        combo_tipo.grid(row=0, column=1, sticky="ew", pady=(0, 6))
 
-        # Opciones dinámicas
-        opts_f  = tk.Frame(c, bg=BG_CARD)
-        opts_f.pack(fill="x")
+        # Opciones dinámicas (frame contenedor en grid)
+        opts_f = tk.Frame(c, bg=BG_CARD)
+        opts_f.grid(row=1, column=0, columnspan=2, sticky="ew")
+        opts_f.columnconfigure(1, weight=1)
+
         lbl_warn = tk.Label(c, text="", fg=WARN_FG, bg=BG_CARD, font=("Segoe UI", 8))
-        lbl_warn.pack(anchor="w", pady=(2, 6))
+        lbl_warn.grid(row=2, column=0, columnspan=2, sticky="w", pady=(2, 4))
 
         combos_opts = {}
 
@@ -529,29 +530,28 @@ class App:
             combos_opts.clear()
             _, opciones, wait = TIPOS[combo_tipo.get()]
             lbl_warn.config(text="⏳ Puede tardar varios minutos." if wait else "")
-            for lbl_txt, vals, flag in opciones:
-                row = tk.Frame(opts_f, bg=BG_CARD)
-                row.pack(fill="x", pady=2)
-                self._lbl(row, f"{lbl_txt}:", w=100).pack(side="left")
-                cb = ttk.Combobox(row, values=vals, state="readonly",
-                                   font=("Segoe UI", 10), width=16)
+            for i, (lbl_txt, vals, flag) in enumerate(opciones):
+                tk.Label(opts_f, text=f"{lbl_txt}:", fg=FG_MAIN, bg=BG_CARD,
+                         font=("Segoe UI", 10), anchor="w").grid(
+                             row=i, column=0, sticky="w", pady=2, padx=(0, 10))
+                cb = ttk.Combobox(opts_f, values=vals, state="readonly",
+                                   font=("Segoe UI", 10))
                 cb.current(0)
-                cb.pack(side="left")
+                cb.grid(row=i, column=1, sticky="ew", pady=2)
                 combos_opts[flag] = cb
 
         combo_tipo.bind("<<ComboboxSelected>>", actualizar)
         actualizar()
 
         # Idioma
-        lang_row = tk.Frame(c, bg=BG_CARD)
-        lang_row.pack(fill="x", pady=(0, 6))
-        self._lbl(lang_row, "Idioma:", w=100).pack(side="left")
-        ent_lang = ttk.Combobox(lang_row, values=["es","en","fr","de","it","pt","ja","ko","zh"], font=("Segoe UI", 10), width=10)
+        self._lbl(c, "Idioma:").grid(row=3, column=0, sticky="w", pady=(4, 6), padx=(0, 10))
+        ent_lang = ttk.Combobox(c, values=["es","en","fr","de","it","pt","ja","ko","zh"],
+                                 font=("Segoe UI", 10))
         ent_lang.set("es")
-        ent_lang.pack(side="left", padx=(0, 6))
+        ent_lang.grid(row=3, column=1, sticky="ew", pady=(4, 6))
 
         btn_gen = self._btn(c, "▶  Generar", None)
-        btn_gen.pack(fill="x")
+        btn_gen.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(2, 0))
 
         def generar():
             nid = self._get_nb_id()
@@ -572,11 +572,9 @@ class App:
         btn_gen.config(command=generar)
 
         # ── Estado de tarea ──────────────────────────────────
-        task_row = tk.Frame(c, bg=BG_CARD)
-        task_row.pack(fill="x", pady=(6, 0))
-        self._lbl(task_row, "Task ID:", w=100).pack(side="left")
-        self.ent_task_id = self._entry(task_row)
-        self.ent_task_id.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        self._lbl(c, "Task ID:").grid(row=5, column=0, sticky="w", pady=(8, 0), padx=(0, 10))
+        self.ent_task_id = self._entry(c)
+        self.ent_task_id.grid(row=5, column=1, sticky="ew", pady=(8, 0), padx=(0, 6))
 
         def ver_estado():
             tid = self.ent_task_id.get().strip()
@@ -587,7 +585,7 @@ class App:
                 if nid:
                     run_cmd(["notebooklm", "artifact", "list", "--notebook", nid], self.out_generar)
 
-        self._btn(task_row, "🔍 Ver estado", ver_estado).pack(side="left")
+        self._btn(c, "🔍 Ver estado", ver_estado).grid(row=5, column=2, sticky="e", pady=(8, 0))
 
         # Auto-capturar el task ID de la salida al generar
         _orig_generar = generar
@@ -633,52 +631,52 @@ class App:
 
         f = tk.Frame(self.content, bg=BG_CONTENT)
         c = self._card(f, "⬇  Descargar Artefacto Generado")
+        c.columnconfigure(1, weight=1)
 
         # Tipo
-        r1 = tk.Frame(c, bg=BG_CARD)
-        r1.pack(fill="x", pady=(0, 6))
-        self._lbl(r1, "Tipo:", w=100).pack(side="left")
-        combo_art = ttk.Combobox(r1, values=list(ARTS.keys()),
-                                  state="readonly", font=("Segoe UI", 10), width=26)
+        self._lbl(c, "Tipo:").grid(row=0, column=0, sticky="w", pady=(0, 6), padx=(0, 10))
+        combo_art = ttk.Combobox(c, values=list(ARTS.keys()),
+                                  state="readonly", font=("Segoe UI", 10))
         combo_art.current(0)
-        combo_art.pack(side="left")
+        combo_art.grid(row=0, column=1, columnspan=2, sticky="ew", pady=(0, 6))
 
-        # Formato (condicional) — frame siempre presente, contenido dinámico
-        r2 = tk.Frame(c, bg=BG_CARD)
-        r2.pack(fill="x", pady=(0, 6))
+        # Formato (condicional) — fila 1, se rellena dinámicamente
+        fmt_lbl = tk.Label(c, text="", fg=FG_MAIN, bg=BG_CARD, font=("Segoe UI", 10), anchor="w")
+        fmt_lbl.grid(row=1, column=0, sticky="w", pady=(0, 6), padx=(0, 10))
         self._combo_fmt = None
+        fmt_frame = tk.Frame(c, bg=BG_CARD)
+        fmt_frame.grid(row=1, column=1, columnspan=2, sticky="ew", pady=(0, 6))
+        fmt_frame.columnconfigure(0, weight=1)
 
         def actualizar_fmt(*_):
-            for w in r2.winfo_children():
+            for w in fmt_frame.winfo_children():
                 w.destroy()
             self._combo_fmt = None
             fmts = ARTS[combo_art.get()][3]
             if fmts:
-                self._lbl(r2, "Formato:", w=100).pack(side="left")
-                cb = ttk.Combobox(r2, values=fmts, state="readonly",
-                                   font=("Segoe UI", 10), width=16)
+                fmt_lbl.config(text="Formato:")
+                cb = ttk.Combobox(fmt_frame, values=fmts, state="readonly",
+                                   font=("Segoe UI", 10))
                 cb.current(0)
-                cb.pack(side="left")
+                cb.grid(row=0, column=0, sticky="ew")
                 self._combo_fmt = cb
+            else:
+                fmt_lbl.config(text="")
 
         combo_art.bind("<<ComboboxSelected>>", actualizar_fmt)
         actualizar_fmt()
 
-        # Filtro por nombre (opcional)
-        r_name = tk.Frame(c, bg=BG_CARD)
-        r_name.pack(fill="x", pady=(0, 6))
-        self._lbl(r_name, "Nombre:", w=100).pack(side="left")
-        ent_name = self._entry(r_name)
-        ent_name.pack(side="left", fill="x", expand=True)
-        tk.Label(r_name, text="  (opcional, busca por título)", fg=FG_DIM, bg=BG_CARD,
-                 font=("Segoe UI", 8)).pack(side="left")
+        # Nombre (opcional)
+        self._lbl(c, "Nombre:").grid(row=2, column=0, sticky="w", pady=(0, 6), padx=(0, 10))
+        ent_name = self._entry(c)
+        ent_name.grid(row=2, column=1, columnspan=2, sticky="ew", pady=(0, 6))
+        tk.Label(c, text="(opcional, busca por título)", fg=FG_DIM, bg=BG_CARD,
+                 font=("Segoe UI", 8)).grid(row=2, column=3, sticky="w", padx=(6, 0))
 
         # Destino
-        r3 = tk.Frame(c, bg=BG_CARD)
-        r3.pack(fill="x", pady=(0, 10))
-        self._lbl(r3, "Guardar como:", w=100).pack(side="left")
-        ent_dest = self._entry(r3)
-        ent_dest.pack(side="left", fill="x", expand=True)
+        self._lbl(c, "Guardar como:").grid(row=3, column=0, sticky="w", pady=(0, 10), padx=(0, 10))
+        ent_dest = self._entry(c)
+        ent_dest.grid(row=3, column=1, sticky="ew", pady=(0, 10), padx=(0, 6))
 
         def examinar():
             art = ARTS[combo_art.get()]
@@ -689,9 +687,9 @@ class App:
                 ent_dest.delete(0, "end")
                 ent_dest.insert(0, ruta)
 
-        tk.Button(r3, text="📂", bg=BG_BTN_HOV, fg=FG_MAIN, relief="flat",
+        tk.Button(c, text="📂", bg=BG_BTN_HOV, fg=FG_MAIN, relief="flat",
                   cursor="hand2", font=("Segoe UI", 11), padx=10,
-                  command=examinar).pack(side="left", padx=(6, 0))
+                  command=examinar).grid(row=3, column=2, pady=(0, 10))
 
         def descargar():
             nid = self._get_nb_id()
@@ -719,7 +717,7 @@ class App:
             run_cmd(cmd, self.out_descargar, on_done=done)
 
         btn_dl = self._btn(c, "⬇  Descargar", descargar)
-        btn_dl.pack(fill="x")
+        btn_dl.grid(row=4, column=0, columnspan=3, sticky="ew")
         self.out_descargar = self._out(f)
         return f
 
