@@ -128,6 +128,7 @@ class EditorAudio:
         self._play_offset = 0.0
         self._arrastrando = False
         self._hilo_repro = None
+        self._temp_wav = None   # WAV temporal para pygame
 
         if not MOVIEPY_OK:
             messagebox.showerror("Error",
@@ -808,6 +809,31 @@ class EditorAudio:
         if f:
             self._cargar_audio(f, modo)
 
+    def _generar_temp_wav(self, path):
+        """Convierte el audio a WAV temporal para que pygame pueda reproducirlo."""
+        import tempfile
+        try:
+            if self._temp_wav and self._temp_wav != path and os.path.exists(self._temp_wav):
+                try:
+                    os.remove(self._temp_wav)
+                except Exception:
+                    pass
+            if path.lower().endswith('.wav'):
+                return path
+            tmp = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+            tmp_path = tmp.name
+            tmp.close()
+            self.estado_lbl.config(text="Preparando reproductor...", fg=C['warning'])
+            self.root.update_idletasks()
+            clip = AudioFileClip(path)
+            clip.write_audiofile(tmp_path, codec='pcm_s16le', logger=None)
+            clip.close()
+            self.estado_lbl.config(text="Listo", fg=C['success'])
+            return tmp_path
+        except Exception:
+            self.estado_lbl.config(text="Listo (sin preview)", fg=C['fg_muted'])
+            return path
+
     def _cargar_audio(self, f, modo):
         self.detener()
         self.ultimo_dir = os.path.dirname(f)
@@ -821,6 +847,9 @@ class EditorAudio:
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo leer el archivo:\n{e}")
             return
+        # Generar WAV temporal para pygame (evita ModPlug_Load failed)
+        if PYGAME_OK:
+            self._temp_wav = self._generar_temp_wav(f)
 
         maximo = int(dur)
         info_txt = f"Duracion: {seg_a_mmss(dur)}  ({dur:.1f} s)"
@@ -988,7 +1017,8 @@ class EditorAudio:
                 getattr(self, f"_t_act_{modo}").config(text=seg_a_mmss(nueva_pos))
         if self.reproduciendo and not self.pausado:
             pygame.mixer.music.stop()
-            pygame.mixer.music.load(self.audio_path)
+            ruta_repro = self._temp_wav if self._temp_wav else self.audio_path
+            pygame.mixer.music.load(ruta_repro)
             self._play_offset = nueva_pos
             pygame.mixer.music.play(start=nueva_pos)
 
@@ -1000,7 +1030,8 @@ class EditorAudio:
             self.estado_lbl.config(text="Reproduciendo...", fg=C['warning'])
         elif not self.reproduciendo:
             try:
-                pygame.mixer.music.load(self.audio_path)
+                ruta_repro = self._temp_wav if self._temp_wav else self.audio_path
+                pygame.mixer.music.load(ruta_repro)
                 self._play_offset = self.pos_actual
                 pygame.mixer.music.play(start=self.pos_actual)
                 self.reproduciendo = True
