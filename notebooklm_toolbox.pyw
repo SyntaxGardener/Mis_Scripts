@@ -5,7 +5,7 @@ pip install notebooklm-py
 """
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
-import subprocess, threading, os, re
+import subprocess, threading, os, re, sys, tempfile
 
 try:
     import notebooklm as _nlm  # pip install notebooklm-py  (solo para que lo detecte el analizador)
@@ -40,9 +40,13 @@ NAV = [
 
 # ── Utilidades ───────────────────────────────────────────────────────────────
 
+def _nlm_cmd():
+    """Usa sys.executable -m notebooklm para evitar el alias de Python de la Microsoft Store."""
+    return [sys.executable, "-m", "notebooklm"]
+
 def run_cmd(cmd, out, on_done=None):
     if cmd[0] == "notebooklm":
-        cmd = [cmd[0], "--storage", STORAGE] + cmd[1:]
+        cmd = _nlm_cmd() + ["--storage", STORAGE] + cmd[1:]
 
     def _log(txt, tag=None):
         out.config(state="normal")
@@ -270,31 +274,37 @@ class App:
         btn_login.config(state="disabled", text="Abriendo navegador…")
         btn_guardar.config(state="disabled", bg="#94a3b8")
 
+        self.out_login.config(state="normal")
+        self.out_login.insert("end",
+            "ℹ️  Se abrirá una ventana de terminal.\n"
+            "   1. Inicia sesión con Google en el navegador.\n"
+            "   2. Cuando veas NotebookLM, pulsa ENTER en esa terminal.\n"
+            "   3. Vuelve aquí y pulsa '💾 Guardar sesión'.\n\n", "")
+        self.out_login.config(state="disabled")
+
         def _run():
             try:
-                subprocess.run(["notebooklm", "login", "--storage", STORAGE], check=False)
-            except FileNotFoundError:
-                pass
-            sesion_ok = os.path.exists(STORAGE)
-            def _after():
-                btn_login.config(state="normal", text="🌐  Iniciar Login")
-                self._actualizar_estado_auth()
-                if sesion_ok:
-                    self._log_ok(self.out_login,
-                                 f"✅ Sesión guardada en:\n   {STORAGE}")
-                    btn_guardar.config(state="disabled", bg="#94a3b8")
-                else:
-                    self.out_login.config(state="normal")
-                    self.out_login.insert("end",
-                        "⚠️  No se generó el archivo de sesión.\n"
-                        "   Prueba el botón 'Guardar sesión' si cerraste el navegador\n"
-                        "   sin que apareciera la página principal de NotebookLM.\n", "err")
-                    self.out_login.config(state="disabled")
-                    btn_guardar.config(state="normal", bg=ACCENT)
-            self.root.after(0, _after)
+                nlm = _nlm_cmd()
+                cmd = nlm + ["login", "--storage", STORAGE]
+                # CREATE_NEW_CONSOLE abre ventana visible; el hilo espera a que termine
+                proc = subprocess.Popen(
+                    cmd,
+                    creationflags=subprocess.CREATE_NEW_CONSOLE,
+                    close_fds=True,
+                )
+                proc.wait()
+            except Exception as e:
+                self.root.after(0, lambda err=e: (
+                    self.out_login.config(state="normal"),
+                    self.out_login.insert("end", f"❌ Error al abrir terminal: {err}\n", "err"),
+                    self.out_login.config(state="disabled"),
+                ))
+            self.root.after(0, lambda: (
+                btn_login.config(state="normal", text="🌐  Iniciar Login"),
+                btn_guardar.config(state="normal", bg=ACCENT),
+            ))
 
         threading.Thread(target=_run, daemon=True).start()
-
     def _guardar_auth(self, btn_guardar):
         import shutil, glob
         posibles = [
