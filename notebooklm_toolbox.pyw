@@ -244,22 +244,17 @@ class App:
         self._actualizar_estado_auth()
 
         info = (
-            "Al pulsar 'Iniciar Login' se abrirá Chrome.\n"
+            "Al pulsar 'Iniciar Login' se abrirá una terminal y el navegador.\n"
             "1. Inicia sesión con tu cuenta de Google.\n"
             "2. Espera a ver la página principal de NotebookLM.\n"
-            "3. Vuelve aquí y pulsa 'Guardar sesión en USB'."
+            "3. Pulsa ENTER en la terminal para guardar la sesión."
         )
         tk.Label(c, text=info, bg=BG_CARD, fg=FG_DIM,
                  font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=(0, 12))
 
         btn_login = self._btn(c, "🌐  Iniciar Login",
-                              lambda: self._hacer_login(btn_login, btn_guardar))
-        btn_login.pack(fill="x", pady=(0, 6))
-
-        btn_guardar = self._btn(c, "💾  Guardar sesión en USB",
-                                lambda: self._guardar_auth(btn_guardar))
-        btn_guardar.pack(fill="x")
-        btn_guardar.config(state="disabled", bg="#94a3b8")
+                              lambda: self._hacer_login(btn_login))
+        btn_login.pack(fill="x")
 
         self.out_login = self._out(f)
         return f
@@ -267,14 +262,14 @@ class App:
     def _actualizar_estado_auth(self):
         if os.path.exists(STORAGE):
             self.lbl_auth_status.config(
-                text=f"✅  Sesión guardada en USB  ({os.path.basename(STORAGE)})",
+                text=f"✅  Sesión guardada  ({os.path.basename(STORAGE)})",
                 fg=SUCCESS_FG)
         else:
             self.lbl_auth_status.config(
-                text="⚠️  No hay sesión guardada en el USB todavía.",
+                text="⚠️  No hay sesión guardada todavía.",
                 fg=WARN_FG)
 
-    def _hacer_login(self, btn_login, btn_guardar):
+    def _hacer_login(self, btn_login):
         btn_login.config(state="disabled", text="Abriendo navegador…")
         btn_guardar.config(state="disabled", bg="#94a3b8")
 
@@ -303,7 +298,6 @@ class App:
                 ))
             self.root.after(0, lambda: (
                 btn_login.config(state="normal", text="🌐  Iniciar Login"),
-                btn_guardar.config(state="normal", bg=ACCENT),
                 self._actualizar_estado_auth(),
             ))
 
