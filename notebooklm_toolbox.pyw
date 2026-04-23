@@ -271,7 +271,6 @@ class App:
 
     def _hacer_login(self, btn_login):
         btn_login.config(state="disabled", text="Abriendo navegador…")
-        btn_guardar.config(state="disabled", bg="#94a3b8")
 
         self.out_login.config(state="normal")
         self.out_login.insert("end",
