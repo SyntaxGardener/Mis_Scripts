@@ -41,8 +41,12 @@ NAV = [
 # ── Utilidades ───────────────────────────────────────────────────────────────
 
 def _nlm_cmd():
-    """Usa sys.executable -m notebooklm para evitar el alias de Python de la Microsoft Store."""
-    return [sys.executable, "-m", "notebooklm"]
+    """Usa python.exe (no pythonw.exe) para que la consola de login funcione correctamente."""
+    exe = sys.executable
+    # pythonw.exe no tiene consola — lo cambiamos por python.exe
+    if exe.lower().endswith("pythonw.exe"):
+        exe = exe[:-len("pythonw.exe")] + "python.exe"
+    return [exe, "-m", "notebooklm"]
 
 def run_cmd(cmd, out, on_done=None):
     if cmd[0] == "notebooklm":
@@ -282,26 +286,46 @@ class App:
             "   3. Vuelve aquí y pulsa '💾 Guardar sesión'.\n\n", "")
         self.out_login.config(state="disabled")
 
+        _needs_console = any(x in sys.executable for x in ("WPy", "WinPython", "winpython"))
+
         def _run():
+            import time
             try:
-                nlm = _nlm_cmd()
-                cmd = nlm + ["login", "--storage", STORAGE]
-                # CREATE_NEW_CONSOLE abre ventana visible; el hilo espera a que termine
-                proc = subprocess.Popen(
-                    cmd,
-                    creationflags=subprocess.CREATE_NEW_CONSOLE,
-                    close_fds=True,
-                )
-                proc.wait()
+                cmd = _nlm_cmd() + ["login", "--storage", STORAGE]
+
+                if _needs_console:
+                    # cmd /k mantiene la ventana abierta hasta que el usuario la cierra
+                    cmd_str = " ".join(f'"{c}"' if " " in c else c for c in cmd)
+                    subprocess.Popen(
+                        ["cmd", "/k", cmd_str],
+                        creationflags=subprocess.CREATE_NEW_CONSOLE,
+                        close_fds=True,
+                    ).wait()
+                else:
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    for _ in range(300):
+                        if os.path.exists(STORAGE):
+                            break
+                        time.sleep(1)
+                    try: proc.terminate()
+                    except: pass
+
             except Exception as e:
                 self.root.after(0, lambda err=e: (
                     self.out_login.config(state="normal"),
-                    self.out_login.insert("end", f"❌ Error al abrir terminal: {err}\n", "err"),
+                    self.out_login.insert("end", f"❌ Error: {err}\n", "err"),
                     self.out_login.config(state="disabled"),
                 ))
+
             self.root.after(0, lambda: (
                 btn_login.config(state="normal", text="🌐  Iniciar Login"),
                 btn_guardar.config(state="normal", bg=ACCENT),
+                self._actualizar_estado_auth(),
             ))
 
         threading.Thread(target=_run, daemon=True).start()
