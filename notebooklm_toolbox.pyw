@@ -286,42 +286,21 @@ class App:
             "   3. Vuelve aquí y pulsa '💾 Guardar sesión'.\n\n", "")
         self.out_login.config(state="disabled")
 
-        _needs_console = any(x in sys.executable for x in ("WPy", "WinPython", "winpython"))
-
         def _run():
-            import time
             try:
                 cmd = _nlm_cmd() + ["login", "--storage", STORAGE]
-
-                if _needs_console:
-                    # cmd /k mantiene la ventana abierta hasta que el usuario la cierra
-                    cmd_str = " ".join(f'"{c}"' if " " in c else c for c in cmd)
-                    subprocess.Popen(
-                        ["cmd", "/k", cmd_str],
-                        creationflags=subprocess.CREATE_NEW_CONSOLE,
-                        close_fds=True,
-                    ).wait()
-                else:
-                    proc = subprocess.Popen(
-                        cmd,
-                        stdin=subprocess.DEVNULL,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    for _ in range(300):
-                        if os.path.exists(STORAGE):
-                            break
-                        time.sleep(1)
-                    try: proc.terminate()
-                    except: pass
-
+                cmd_str = " ".join(f'"{c}"' if " " in c else c for c in cmd)
+                subprocess.Popen(
+                    ["cmd", "/k", cmd_str],
+                    creationflags=subprocess.CREATE_NEW_CONSOLE,
+                    close_fds=True,
+                ).wait()
             except Exception as e:
                 self.root.after(0, lambda err=e: (
                     self.out_login.config(state="normal"),
                     self.out_login.insert("end", f"❌ Error: {err}\n", "err"),
                     self.out_login.config(state="disabled"),
                 ))
-
             self.root.after(0, lambda: (
                 btn_login.config(state="normal", text="🌐  Iniciar Login"),
                 btn_guardar.config(state="normal", bg=ACCENT),
