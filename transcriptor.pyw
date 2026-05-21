@@ -295,13 +295,66 @@ class TranscriptorApp(tk.Tk):
                 if sys.stderr is None:
                     sys.stderr = io.StringIO()
 
+                # Forzar CPU y limitar threads ANTES de que torch se inicialice,
+                # para evitar que se quede bloqueado detectando GPU o configurando CUDA
+                os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+                import torch
+                torch.set_num_threads(4)
+                torch.set_num_interop_threads(1)
+
                 import whisper
 
-                # Cargar audio para conocer la duración antes de transcribir
+                # Obtener duración del audio sin cargar todo el array en memoria
                 self.after(0, lambda: self._set_status(
                     "Analizando audio…", ACCENT))
-                audio_array  = whisper.load_audio(audio)
-                total_secs   = len(audio_array) / whisper.audio.SAMPLE_RATE
+                try:
+                    # ffprobe es lo más ligero para obtener la duración
+                    probe = subprocess.run(
+                        ["ffprobe", "-v", "error", "-show_entries",
+                         "format=duration", "-of", "default=noprint_wrappers=1:nokey=1",
+                         audio],
+                        capture_output=True, text=True, timeout=30
+                    )
+                    total_secs = float(probe.stdout.strip())
+                except Exception:
+                    # Fallback: carga rápida solo para medir duración
+                    _arr = whisper.load_audio(audio)
+                    total_secs = len(_arr) / whisper.audio.SAMPLE_RATE
+                    del _arr  # liberar memoria inmediatamente
+
+                # Carpeta de modelos: primero junto al script (útil en USB),
+                # si no existe se usa la caché estándar del usuario.
+                _local_models = os.path.join(_SCRIPT_DIR, "whisper_models")
+                _model_files = {
+                    "tiny":   "tiny.pt",
+                    "base":   "base.pt",
+                    "small":  "small.pt",
+                    "medium": "medium.pt",
+                }
+                _local_file  = os.path.join(_local_models, _model_files.get(model_name, ""))
+                _cache_dir   = os.path.join(os.path.expanduser("~"), ".cache", "whisper")
+                _cache_file  = os.path.join(_cache_dir, _model_files.get(model_name, ""))
+
+                if os.path.isfile(_local_file):
+                    _download_root = _local_models
+                    self.after(0, lambda: self._set_status(
+                        f"Cargando modelo '{model_name}' desde el USB…", ACCENT))
+                elif os.path.isfile(_cache_file):
+                    _download_root = _cache_dir
+                    self.after(0, lambda: self._set_status(
+                        f"Cargando modelo '{model_name}' desde disco…", ACCENT))
+                else:
+                    # No está en ningún sitio: descargarlo junto al script
+                    os.makedirs(_local_models, exist_ok=True)
+                    _download_root = _local_models
+                    _sizes = {"tiny": "~75 MB", "base": "~145 MB",
+                              "small": "~460 MB", "medium": "~1,5 GB"}
+                    _sz = _sizes.get(model_name, "")
+                    self.after(0, lambda sz=_sz: self._set_status(
+                        f"Descargando modelo '{model_name}' ({sz}) — puede tardar varios minutos…", WARN))
+
+                model = whisper.load_model(model_name, download_root=_download_root,
+                                           device="cpu")
 
                 self.after(0, lambda: self._set_status(
                     f"Modelo '{model_name}' listo. Iniciando transcripción…", ACCENT))
@@ -312,8 +365,20 @@ class TranscriptorApp(tk.Tk):
                 self.after(1000, lambda: self._start_timer(
                     start_time, total_secs, speed_ratio))
 
-                model  = whisper.load_model(model_name)
-                result = model.transcribe(audio_array, language="es", verbose=False)
+                # condition_on_previous_text=False evita que Whisper entre en bucle
+                # cuando un segmento tiene silencio o ruido (problema habitual en audios largos).
+                # no_speech_threshold y compression_ratio_threshold hacen que descarte
+                # segmentos sin voz en lugar de quedarse intentando transcribirlos.
+                result = model.transcribe(
+                    audio,
+                    language="es",
+                    verbose=None,
+                    fp16=False,
+                    condition_on_previous_text=False,
+                    no_speech_threshold=0.6,
+                    compression_ratio_threshold=2.4,
+                    temperature=0.0,
+                )
 
                 # Detener cronómetro
                 self._timer_active = False
