@@ -140,7 +140,13 @@ class TranscriptorApp(tk.Tk):
         self.lbl_status = tk.Label(outer, textvariable=self.status_msg,
                                    font=FONT_MAIN, bg=BG, fg=SUBTEXT,
                                    anchor="w")
-        self.lbl_status.pack(fill="x", pady=(0, 10))
+        self.lbl_status.pack(fill="x", pady=(0, 2))
+
+        self.timer_msg = tk.StringVar(value="")
+        self.lbl_timer = tk.Label(outer, textvariable=self.timer_msg,
+                                  font=FONT_SMALL, bg=BG, fg=SUBTEXT,
+                                  anchor="w")
+        self.lbl_timer.pack(fill="x", pady=(0, 8))
 
         # ── Botón principal ──
         self.btn_run = self._btn(outer, "▶  Transcribir", self._start,
@@ -224,11 +230,10 @@ class TranscriptorApp(tk.Tk):
         pct = min(elapsed / expected_secs * 95, 95)   # tope en 95% hasta terminar
         self._update_progress(pct)
 
-        self._set_status(
-            f"Transcribiendo…  ⏱ {em}m {es:02d}s transcurridos  "
-            f"(audio: {am}m {a_s:02d}s)",
-            ACCENT
+        self.timer_msg.set(
+            f"⏱ {em}m {es:02d}s transcurridos  (audio: {am}m {a_s:02d}s)"
         )
+        self.lbl_timer.configure(fg=ACCENT)
         self.after(1000, lambda: self._start_timer(start_time, total_secs, speed_ratio))
 
     # ── Transcripción ────────────────────────────────────────────────
@@ -365,12 +370,7 @@ class TranscriptorApp(tk.Tk):
                 self.after(1000, lambda: self._start_timer(
                     start_time, total_secs, speed_ratio))
 
-                # condition_on_previous_text=False evita que Whisper entre en bucle
-                # cuando un segmento tiene silencio o ruido (problema habitual en audios largos).
-                # no_speech_threshold y compression_ratio_threshold hacen que descarte
-                # segmentos sin voz en lugar de quedarse intentando transcribirlos.
-                result = model.transcribe(
-                    audio,
+                TRANSCRIBE_OPTS = dict(
                     language="es",
                     verbose=None,
                     fp16=False,
@@ -378,16 +378,45 @@ class TranscriptorApp(tk.Tk):
                     no_speech_threshold=0.6,
                     compression_ratio_threshold=2.4,
                     temperature=0.0,
+                    max_initial_timestamp=1.0,
+                    beam_size=1,
+                    best_of=1,
                 )
+
+                # Para audios largos (>20 min) troceamos en bloques de 10 min
+                # para evitar que Whisper se quede bloqueado en un segmento problemático.
+                CHUNK_SECS = 10 * 60  # 10 minutos por bloque
+
+                if total_secs > 20 * 60:
+                    import tempfile, math
+                    n_chunks = math.ceil(total_secs / CHUNK_SECS)
+                    textos = []
+                    with tempfile.TemporaryDirectory() as tmpdir:
+                        for i in range(n_chunks):
+                            t_start = i * CHUNK_SECS
+                            chunk_path = os.path.join(tmpdir, f"chunk_{i:03d}.wav")
+                            self.after(0, lambda i=i, n=n_chunks: self._set_status(
+                                f"Transcribiendo bloque {i+1}/{n}…", ACCENT))
+                            subprocess.run([
+                                "ffmpeg", "-y", "-loglevel", "error",
+                                "-ss", str(t_start),
+                                "-t",  str(CHUNK_SECS),
+                                "-i",  audio,
+                                "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le",
+                                chunk_path
+                            ], check=True, timeout=120)
+                            res = model.transcribe(chunk_path, **TRANSCRIBE_OPTS)
+                            textos.append(
+                                res.get("text", "") if isinstance(res, dict) else str(res)
+                            )
+                    text = " ".join(t.strip() for t in textos if t.strip())
+                else:
+                    result = model.transcribe(audio, **TRANSCRIBE_OPTS)
+                    text = result.get("text", "") if isinstance(result, dict) else str(result)
 
                 # Detener cronómetro
                 self._timer_active = False
 
-                # Extraer texto
-                if isinstance(result, dict):
-                    text = result.get("text") or ""
-                else:
-                    text = str(result) if result is not None else ""
                 text = text.strip()
 
                 # Guardar resultado
@@ -413,7 +442,18 @@ class TranscriptorApp(tk.Tk):
         self._timer_active = False
         self.progress_var.set(100)
         self._set_status(f"✔  Guardado en: {out_path}", SUCCESS)
+        self.timer_msg.set("")
         self.btn_run.configure(fg="#FFFFFF", cursor="hand2")
+        self._last_txt = out_path
+
+        # Mostrar botón "Generar acta" si existe el script de actas
+        _acta_script = os.path.join(_SCRIPT_DIR, "acta_reunion.pyw")
+        if os.path.isfile(_acta_script) and not hasattr(self, "_btn_acta_shown"):
+            self._btn_acta_shown = True
+            outer = self.btn_run.master
+            self.btn_acta = self._btn(outer, "📋  Generar acta de esta reunión",
+                                      self._launch_acta)
+            self.btn_acta.pack(fill="x", ipady=6, pady=(6, 0))
 
         if self.open_folder.get():
             folder = os.path.dirname(out_path)
@@ -424,11 +464,17 @@ class TranscriptorApp(tk.Tk):
             else:
                 subprocess.Popen(["xdg-open", folder])
 
+    def _launch_acta(self):
+        _acta_script = os.path.join(_SCRIPT_DIR, "acta_reunion.pyw")
+        txt = getattr(self, "_last_txt", "")
+        subprocess.Popen([sys.executable, _acta_script, txt])
+
     def _on_error(self, msg):
         self._running      = False
         self._timer_active = False
         self.progress_var.set(0)
         self._set_status(f"✖  Error: {msg[:80]}", ERROR)
+        self.timer_msg.set("")
         self.btn_run.configure(fg="#FFFFFF", cursor="hand2")
         messagebox.showerror("Error en la transcripción", msg)
 
