@@ -624,7 +624,7 @@ class MenuFinalPerfecto:
         if any(x in n for x in ["imagen", "image"]):
             return "IMAGEN"
         if any(x in n for x in ["horario", "diligencia", "gestion",
-                                  "certificado", "calculador", "diploma"]):
+                                  "certificado", "calculador", "diploma", "sauce"]):
             return "ADMINISTRACIÓN"
         if any(x in n for x in ["bingo", "crono", "game", "pasapalabra",
                                   "picker", "clase", "qr", "juego"]):
