@@ -615,7 +615,7 @@ class MenuFinalPerfecto:
                                   "imports", "limpieza", "metadatos", "borrar", "temp",
                                   "cerrar", "portapapeles", "organizador"]):
             return "SISTEMA"
-        if any(x in n for x in ["pdf", "informe", "word", "doc", "tabla", "format", "docx"]):
+        if any(x in n for x in ["pdf", "informe", "word", "doc", "tabla", "format", "markdown", "docx"]):
             return "PDF/DOCX/PPTX"
         if any(x in n for x in ["examen", "apuntes", "resumen", "presentacion", "timeline", "notas"]):
             return "CLASES"
