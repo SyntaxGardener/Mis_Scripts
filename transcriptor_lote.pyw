@@ -73,7 +73,7 @@ class TranscriptorLoteApp(tk.Tk):
         self._running     = False
 
         self._build_ui()
-        self._center_window(560, 560)
+        self._center_window(560, 640)
 
     def _build_ui(self):
         outer = tk.Frame(self, bg=BG, padx=18, pady=5)
