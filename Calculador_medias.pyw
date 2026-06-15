@@ -30,20 +30,12 @@ def encontrar_nombre(lineas):
             return limpiar_nombre(linea.split('DE LA ALUMNA:')[-1])
     return None
 
-# Regex principal: captura ámbito y nombre de módulo.
-# Formato de línea: "ACT Materia y fuerza IN SU 1 2024/2025"
-#   - puede haber UNA nota (solo ordinaria) o DOS (ordinaria + extraordinaria)
-#   - tomamos TODAS las notas de la línea y nos quedamos con el valor más alto
-# \b evita que NT coincida dentro de 'Entornos' o IN dentro de 'Inecuaciones'.
 PATRON_LINEA = re.compile(
     r'^(ACT|AC|AS)\s+(.+?)\s+(?:\b(?:SB|NT|BI|SU|IN|NP)\b)'
 )
-# Busca todos los tokens de nota en cualquier parte de la línea
 PATRON_NOTAS = re.compile(r'\b(SB|NT|BI|SU|IN|NP)\b')
 
 def procesar_pdf(ruta_pdf, log_func):
-    # Cada ámbito es ahora un dict {nombre_modulo: mejor_valor}
-    # para poder aplicar la regla "si hay dos notas, cuenta la más alta".
     alumnos = {}
     with pdfplumber.open(ruta_pdf) as pdf:
         for num_pagina, pagina in enumerate(pdf.pages, 1):
@@ -58,28 +50,183 @@ def procesar_pdf(ruta_pdf, log_func):
                 alumnos[nombre] = {'ACT': {}, 'AC': {}, 'AS': {}}
                 log_func(f"  📍 Página {num_pagina}: {nombre}")
             for linea in lineas:
-                # Filtro rápido: la línea debe contener un año válido
                 if not any(anio in linea for anio in ANIOS_VALIDOS):
                     continue
                 m = PATRON_LINEA.match(linea.strip())
                 if not m:
                     continue
-                ambito = m.group(1)          # 'ACT', 'AC' o 'AS'
-                modulo = m.group(2).strip()  # nombre del módulo
-                # Extraer TODAS las notas de la línea (ordinaria y/o extraordinaria)
-                # y quedarse con el valor más alto
+                ambito = m.group(1)
+                modulo = m.group(2).strip()
                 notas_linea = PATRON_NOTAS.findall(linea)
                 if not notas_linea:
                     continue
                 mejor_valor = max(CONVERSION[n] for n in notas_linea)
-                # Actualizar solo si mejora la nota ya registrada para ese módulo
                 prev = alumnos[nombre][ambito].get(modulo)
                 if prev is None or mejor_valor > prev:
                     alumnos[nombre][ambito][modulo] = mejor_valor
     return alumnos
 
 
+def calcular_medias(datos_alumno, exentos):
+    """
+    datos_alumno: dict {'ACT': {...}, 'AC': {...}, 'AS': {...}}
+    exentos: set con los ámbitos a ignorar, p.ej. {'ACT'} o {'AC', 'AS'}
+    Devuelve (m_act, m_ac, m_as, m_global)
+    """
+    def media_ambito(ambito):
+        if ambito in exentos:
+            return None
+        vals = list(datos_alumno[ambito].values())
+        return sum(vals) / len(vals) if vals else None
+
+    m_act = media_ambito('ACT')
+    m_ac  = media_ambito('AC')
+    m_as  = media_ambito('AS')
+    validas  = [m for m in [m_act, m_ac, m_as] if m is not None]
+    m_global = sum(validas) / len(validas) if validas else None
+    return m_act, m_ac, m_as, m_global
+
+
 # --- INTERFAZ GRÁFICA ---
+
+class DialogoExenciones(tk.Toplevel):
+    """
+    Ventana modal que muestra todos los alumnos encontrados y permite
+    marcar qué ámbitos están exentos por prueba libre de la ESO.
+    """
+    def __init__(self, parent, alumnos_total):
+        super().__init__(parent)
+        self.title("Revisión de exenciones por prueba libre")
+        self.resizable(False, False)
+        self.grab_set()  # modal
+
+        # Centrar sobre la ventana padre
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_rootx()
+        py = parent.winfo_rooty()
+        w, h = 680, 520
+        self.geometry(f"{w}x{h}+{px + (pw-w)//2}+{py + (ph-h)//2}")
+
+        self.alumnos_total = alumnos_total
+        self.resultado = None  # None = cancelado; dict = confirmado
+
+        # Vars tkinter: {nombre: {'ACT': BooleanVar, 'AC': BooleanVar, 'AS': BooleanVar}}
+        self.vars = {}
+
+        # ── Cabecera ────────────────────────────────────────────────────────
+        tk.Label(
+            self,
+            text="Exenciones por prueba libre de la ESO",
+            font=("Arial", 12, "bold")
+        ).pack(pady=(14, 2))
+        tk.Label(
+            self,
+            text=(
+                "Marca los ámbitos que el alumno/a superó en prueba libre.\n"
+                "Esos ámbitos se excluirán del cálculo de la media."
+            ),
+            font=("Arial", 9),
+            fg="#555"
+        ).pack(pady=(0, 8))
+
+        # ── Tabla con scroll ─────────────────────────────────────────────────
+        contenedor = tk.Frame(self)
+        contenedor.pack(fill="both", expand=True, padx=16)
+
+        canvas = tk.Canvas(contenedor, borderwidth=0, highlightthickness=0)
+        scroll = tk.Scrollbar(contenedor, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        self.frame_tabla = tk.Frame(canvas)
+        canvas_window = canvas.create_window((0, 0), window=self.frame_tabla, anchor="nw")
+
+        def on_frame_configure(e):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        self.frame_tabla.bind("<Configure>", on_frame_configure)
+
+        def on_canvas_configure(e):
+            canvas.itemconfig(canvas_window, width=e.width)
+        canvas.bind("<Configure>", on_canvas_configure)
+
+        # Cabecera de columnas
+        for col, (txt, w) in enumerate([
+            ("Alumno/a", 340), ("ACT exento", 90), ("AC exento", 90), ("AS exento", 90)
+        ]):
+            tk.Label(
+                self.frame_tabla,
+                text=txt, width=w//8,
+                font=("Arial", 9, "bold"),
+                bg="#2E7D32", fg="white",
+                anchor="w", padx=6, pady=4
+            ).grid(row=0, column=col, sticky="ew", padx=1, pady=(0,2))
+
+        # Filas por alumno
+        for fila, nombre in enumerate(sorted(alumnos_total.keys()), start=1):
+            self.vars[nombre] = {a: tk.BooleanVar(value=False) for a in ['ACT', 'AC', 'AS']}
+            bg = "#f5f5f5" if fila % 2 == 0 else "white"
+
+            tk.Label(
+                self.frame_tabla,
+                text=nombre, anchor="w",
+                font=("Arial", 9), bg=bg, padx=6, pady=3
+            ).grid(row=fila, column=0, sticky="ew")
+
+            for col, ambito in enumerate(['ACT', 'AC', 'AS'], start=1):
+                # Solo mostrar checkbox si el alumno tiene datos en ese ámbito
+                tiene_datos = bool(alumnos_total[nombre][ambito])
+                if tiene_datos:
+                    tk.Checkbutton(
+                        self.frame_tabla,
+                        variable=self.vars[nombre][ambito],
+                        bg=bg, activebackground=bg
+                    ).grid(row=fila, column=col, sticky="", pady=3)
+                else:
+                    # Sin datos en ese ámbito: no tiene sentido exentarlo
+                    tk.Label(
+                        self.frame_tabla,
+                        text="—", fg="#bbb",
+                        font=("Arial", 9), bg=bg
+                    ).grid(row=fila, column=col, sticky="", pady=3)
+
+        # ── Botones ─────────────────────────────────────────────────────────
+        frame_btns = tk.Frame(self)
+        frame_btns.pack(pady=12)
+
+        tk.Button(
+            frame_btns,
+            text="Ninguna exención (todos los ámbitos cuentan)",
+            command=self._ninguna,
+            font=("Arial", 9), padx=10, pady=5,
+            bg="#888888", fg="white"
+        ).pack(side="left", padx=8)
+
+        tk.Button(
+            frame_btns,
+            text="✔  Confirmar y calcular",
+            command=self._confirmar,
+            font=("Arial", 10, "bold"), padx=14, pady=6,
+            bg="#2E7D32", fg="white"
+        ).pack(side="left", padx=8)
+
+    def _ninguna(self):
+        """Desmarca todo y confirma."""
+        for nombre in self.vars:
+            for ambito in self.vars[nombre]:
+                self.vars[nombre][ambito].set(False)
+        self._confirmar()
+
+    def _confirmar(self):
+        """Lee los checkboxes y construye el dict de exentos."""
+        # resultado: {nombre: set_de_ambitos_exentos}
+        self.resultado = {}
+        for nombre, ambitos in self.vars.items():
+            exentos = {a for a, var in ambitos.items() if var.get()}
+            self.resultado[nombre] = exentos
+        self.destroy()
+
 
 class AppCalculadora:
     def __init__(self, root):
@@ -92,18 +239,17 @@ class AppCalculadora:
         self.root.geometry(f"{ancho}x{alto}+{pos_x}+10")
         self.root.resizable(False, False)
 
-        # Estado interno
         self.archivos_seleccionados = []
         self.resultados_calculados = []
+        self.alumnos_total_raw = {}   # datos brutos tras procesar PDFs
+        self.exenciones = {}          # {nombre: set_ambitos_exentos}
         self.ruta_excel_guardada = None
 
-        # Colores activo/inactivo por botón (para evitar el gris feo de Windows)
         self.COLORES = {
             'limpiar':   {'on': ('#c0392b', 'white'), 'off': ('#e8b5b0', '#888888')},
             'calcular':  {'on': ('#2E7D32', 'white'), 'off': ('#a5c8a7', '#666666')},
             'guardar':   {'on': ('#6A1B9A', 'white'), 'off': ('#c9a8e0', '#666666')},
         }
-        # Flags de habilitación manual
         self._limpiar_activo  = False
         self._calcular_activo = False
         self._guardar_activo  = False
@@ -217,6 +363,7 @@ class AppCalculadora:
             font=("Arial", 9, "italic"), anchor="w"
         )
         self.lbl_guardado.pack(fill="x", pady=(4, 0))
+
         # ── Pie de página ────────────────────────────────────────────────────
         tk.Label(
             root,
@@ -224,15 +371,13 @@ class AppCalculadora:
             font=("Arial", 8, "italic"),
             fg="#999999"
         ).pack(side="bottom", pady=(0, 6))
-        
+
     # ── Métodos ──────────────────────────────────────────────────────────────
 
     def _set_btn(self, btn, key, activo):
-        """Habilita o deshabilita un botón visualmente sin usar state=disabled."""
         estado = 'on' if activo else 'off'
         bg, fg = self.COLORES[key][estado]
         btn.config(bg=bg, fg=fg)
-        # Guardamos el flag en un atributo del propio botón
         btn._habilitado = activo
 
     def _btn_habilitado(self, btn):
@@ -254,8 +399,9 @@ class AppCalculadora:
             )
             self._set_btn(self.btn_calcular, 'calcular', True)
             self._set_btn(self.btn_limpiar,  'limpiar',  True)
-            # Resetear estado previo
             self.resultados_calculados = []
+            self.alumnos_total_raw = {}
+            self.exenciones = {}
             self._set_btn(self.btn_guardar, 'guardar', False)
             self.lbl_guardado.config(text="")
             self.limpiar_consola()
@@ -265,6 +411,8 @@ class AppCalculadora:
             return
         self.archivos_seleccionados = []
         self.resultados_calculados = []
+        self.alumnos_total_raw = {}
+        self.exenciones = {}
         self.lbl_archivos.config(text="Ningún archivo seleccionado.", fg="#555")
         self._set_btn(self.btn_calcular, 'calcular', False)
         self._set_btn(self.btn_limpiar,  'limpiar',  False)
@@ -297,9 +445,9 @@ class AppCalculadora:
             messagebox.showwarning("Aviso", "No hay archivos seleccionados.")
             return
         self._set_btn(self.btn_calcular, 'calcular', False)
-        self._set_btn(self.btn_cargar,   'limpiar',  False)  # reutilizamos paleta apagada
+        self._set_btn(self.btn_cargar,   'limpiar',  False)
         self._set_btn(self.btn_guardar,  'guardar',  False)
-        self.btn_cargar.config(bg="#a0bcd8", fg="#555555")   # apagado neutro para btn_cargar
+        self.btn_cargar.config(bg="#a0bcd8", fg="#555555")
         self.limpiar_consola()
         threading.Thread(target=self.ejecutar_calculo, daemon=True).start()
 
@@ -315,8 +463,6 @@ class AppCalculadora:
                 for nombre, datos in nuevos.items():
                     if nombre not in alumnos_total:
                         alumnos_total[nombre] = {'ACT': {}, 'AC': {}, 'AS': {}}
-                    # Fusionar dicts: si el mismo módulo aparece en dos PDFs,
-                    # conservar el valor más alto.
                     for ambito in ['ACT', 'AC', 'AS']:
                         for modulo, valor in datos[ambito].items():
                             prev = alumnos_total[nombre][ambito].get(modulo)
@@ -331,44 +477,66 @@ class AppCalculadora:
             self.btn_cargar.config(bg="#1565C0", fg="white")
             return
 
+        self.alumnos_total_raw = alumnos_total
+        self.log(f"\n✅ Extracción completada. {len(alumnos_total)} alumno(s) encontrado(s).")
+        self.log("Abriendo pantalla de exenciones...")
+
+        # Abrir el diálogo de exenciones en el hilo principal
+        self.root.after(0, self._abrir_dialogo_exenciones)
+
+    def _abrir_dialogo_exenciones(self):
+        """Lanza el diálogo modal y, cuando se cierra, continúa con el cálculo."""
+        dialogo = DialogoExenciones(self.root, self.alumnos_total_raw)
+        self.root.wait_window(dialogo)
+
+        if dialogo.resultado is None:
+            # El usuario cerró la ventana sin confirmar → cancelar
+            self.log("\n⚠️  Cálculo cancelado por el usuario.")
+            self._set_btn(self.btn_calcular, 'calcular', True)
+            self.btn_cargar.config(bg="#1565C0", fg="white")
+            return
+
+        self.exenciones = dialogo.resultado
+        # Continuar el cálculo en un hilo para no bloquear la UI
+        threading.Thread(target=self._calcular_medias_y_mostrar, daemon=True).start()
+
+    def _calcular_medias_y_mostrar(self):
         resultados = []
         self.log("\n" + "=" * 70 + "\n📊 RESULTADOS\n" + "=" * 70)
 
-        for nombre, datos in alumnos_total.items():
+        for nombre, datos in self.alumnos_total_raw.items():
+            exentos = self.exenciones.get(nombre, set())
+            m_act, m_ac, m_as, m_global = calcular_medias(datos, exentos)
+
             self.log(f"\n👤 Alumno/a: {nombre}")
-            vals_act = list(datos['ACT'].values())
-            vals_ac  = list(datos['AC'].values())
-            vals_as  = list(datos['AS'].values())
-            m_act = sum(vals_act) / len(vals_act) if vals_act else None
-            m_ac  = sum(vals_ac)  / len(vals_ac)  if vals_ac  else None
-            m_as  = sum(vals_as)  / len(vals_as)  if vals_as  else None
 
-            if m_act is not None:
-                detalle = ", ".join(
-                    f"{mod}: {v}" for mod, v in datos['ACT'].items()
-                )
-                self.log(f"  ACT ({len(vals_act)} módulos): {detalle} → Media: {m_act:.2f}")
-            if m_ac is not None:
-                detalle = ", ".join(
-                    f"{mod}: {v}" for mod, v in datos['AC'].items()
-                )
-                self.log(f"  AC  ({len(vals_ac)} módulos): {detalle} → Media: {m_ac:.2f}")
-            if m_as is not None:
-                detalle = ", ".join(
-                    f"{mod}: {v}" for mod, v in datos['AS'].items()
-                )
-                self.log(f"  AS  ({len(vals_as)} módulos): {detalle} → Media: {m_as:.2f}")
+            if exentos:
+                self.log(f"  ⚠️  Ámbitos exentos (prueba libre): {', '.join(sorted(exentos))}")
 
-            validas  = [m for m in [m_act, m_ac, m_as] if m is not None]
-            m_global = sum(validas) / len(validas) if validas else None
-            if m_global is not None: self.log(f"  ▶ MEDIA GLOBAL: {m_global:.2f}")
+            for ambito, media, etiqueta in [
+                ('ACT', m_act, 'ACT'),
+                ('AC',  m_ac,  'AC '),
+                ('AS',  m_as,  'AS '),
+            ]:
+                if ambito in exentos:
+                    self.log(f"  {etiqueta}: [EXCLUIDO — exento por prueba libre]")
+                elif media is not None:
+                    detalle = ", ".join(
+                        f"{mod}: {v}" for mod, v in datos[ambito].items()
+                    )
+                    n = len(datos[ambito])
+                    self.log(f"  {etiqueta} ({n} módulos): {detalle} → Media: {media:.2f}")
+
+            if m_global is not None:
+                self.log(f"  ▶ MEDIA GLOBAL: {m_global:.2f}")
 
             resultados.append({
                 'Nombre':       nombre,
-                'Media ACT':    round(m_act,    2) if m_act    is not None else "N/A",
-                'Media AC':     round(m_ac,     2) if m_ac     is not None else "N/A",
-                'Media AS':     round(m_as,     2) if m_as     is not None else "N/A",
-                'Media Global': round(m_global, 2) if m_global is not None else "N/A"
+                'Media ACT':    round(m_act,    2) if m_act    is not None else None,
+                'Media AC':     round(m_ac,     2) if m_ac     is not None else None,
+                'Media AS':     round(m_as,     2) if m_as     is not None else None,
+                'Media Global': round(m_global, 2) if m_global is not None else None,
+                'Exentos':      ", ".join(sorted(exentos)) if exentos else "—",
             })
 
         self.resultados_calculados = resultados
