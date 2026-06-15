@@ -67,6 +67,7 @@ class TranscriptorLoteApp(tk.Tk):
         self.open_folder  = tk.BooleanVar(value=True)
         self.model_choice = tk.StringVar(value="small")
         self.language     = tk.StringVar(value="en")
+        self.output_mode  = tk.StringVar(value="individual")  # "individual" | "combined"
         self.status_msg   = tk.StringVar(value="Listo")
         self.progress_var = tk.DoubleVar(value=0)
         self._running     = False
@@ -128,6 +129,21 @@ class TranscriptorLoteApp(tk.Tk):
                                 activebackground=BG, selectcolor=PANEL,
                                 relief="flat", cursor="hand2")
             rb.grid(row=i // 2, column=i % 2, sticky="w", padx=(0, 20), pady=1)
+
+        # ── Modo de salida ──
+        self._section(outer, "Modo de salida")
+        mode_frame = tk.Frame(outer, bg=BG)
+        mode_frame.pack(fill="x", pady=(2, 10))
+        modes = [
+            ("individual", "Un .txt por audio"),
+            ("combined",   "Todo en un único .txt"),
+        ]
+        for i, (val, label) in enumerate(modes):
+            rb = tk.Radiobutton(mode_frame, text=label, variable=self.output_mode,
+                                value=val, font=FONT_MAIN, bg=BG, fg=TEXT,
+                                activebackground=BG, selectcolor=PANEL,
+                                relief="flat", cursor="hand2")
+            rb.grid(row=0, column=i, sticky="w", padx=(0, 30), pady=1)
 
         # ── Modelo ──
         self._section(outer, "Modelo Whisper")
@@ -271,6 +287,7 @@ class TranscriptorLoteApp(tk.Tk):
         self.progress_var.set(0)
         model_name  = self.model_choice.get()
         language    = self.language.get()
+        output_mode = self.output_mode.get()
         total       = len(files)
 
         def worker():
@@ -321,7 +338,8 @@ class TranscriptorLoteApp(tk.Tk):
                     best_of=1,
                 )
 
-                errors = []
+                errors        = []
+                combined_parts = []  # solo usado en modo combinado
 
                 for idx, audio in enumerate(files, 1):
                     name = Path(audio).name
@@ -334,16 +352,30 @@ class TranscriptorLoteApp(tk.Tk):
                     try:
                         result = model.transcribe(audio, **TRANSCRIBE_OPTS)
                         text   = result.get("text", "").strip() if isinstance(result, dict) else str(result).strip()
+                        if not text:
+                            text = "(no speech detected)"
 
-                        stem    = Path(audio).stem
-                        out_txt = os.path.join(out_dir, f"{stem}.txt")
-                        with open(out_txt, "w", encoding="utf-8") as fh:
-                            fh.write(text if text else "(no speech detected)")
+                        if output_mode == "individual":
+                            stem    = Path(audio).stem
+                            out_txt = os.path.join(out_dir, f"{stem}.txt")
+                            with open(out_txt, "w", encoding="utf-8") as fh:
+                                fh.write(text)
+                        else:
+                            # Acumular con cabecera de nombre de archivo
+                            combined_parts.append(f"=== {Path(audio).name} ===\n{text}")
+
                     except Exception as e:
                         errors.append(f"{name}: {e}")
 
                     pct = idx / total * 100
                     self.after(0, lambda p=pct: self.progress_var.set(p))
+
+                # Guardar archivo combinado si corresponde
+                if output_mode == "combined" and combined_parts:
+                    ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    out_txt  = os.path.join(out_dir, f"transcripcion_completa_{ts}.txt")
+                    with open(out_txt, "w", encoding="utf-8") as fh:
+                        fh.write("\n\n".join(combined_parts))
 
                 self.after(0, lambda: self._on_done(out_dir, total, errors))
 
