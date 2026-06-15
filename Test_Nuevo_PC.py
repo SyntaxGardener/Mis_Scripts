@@ -64,7 +64,7 @@ LIBRERIAS_BASE = [
     ("pikepdf",           "pikepdf",           "Edición y Cifrado PDF",      False),
     ("browser_cookie3",   "browser_cookie3",   "Cookies",                    False),
     ("cloudscraper",      "cloudscraper",      "Extraer datos web",          False),
-    ("markitdown",        "markitdown",        "Archivos/Web a Markdown",    True),
+    ("markitdown",        "markitdown[all]",   "Archivos/Web a Markdown",    True),
     ("selenium",          "selenium",          "Automatización Navegadores", False),
     ("webdriver_manager", "webdriver-manager", "Gestión Drivers Selenium",   False),
     ("notebooklm",        "notebooklm-py",     "Notebook LM",                False),
