@@ -39,13 +39,18 @@ def calcular_segmentos(texto_original, sexo, reemplazos):
     s = str(sexo).strip().upper()
     es_m = "M" in s
     cambios = {
-        r"D\./Dña\.": "D." if es_m else "Dña.",
-        r"nacido/a": "nacido" if es_m else "nacida",
-        r"del/de la": "del" if es_m else "de la",
-        r"interesado/a": "interesado" if es_m else "interesada",
-        r"alumno/a": "alumno" if es_m else "alumna",
-        r"el/la": "el" if es_m else "la"
+        r"D\.\s*/\s*Dña\.": "D." if es_m else "Dña.",
+        r"del\s*/\s*de\s+la": "del" if es_m else "de la",
+        r"el\s*/\s*la": "el" if es_m else "la",
     }
+    # Palabras con concordancia de género regular (raíz + terminación o/a),
+    # admitiendo tanto la forma abreviada ("nacido/a") como la forma larga
+    # ("nacido/nacida"), con o sin espacios alrededor de la barra.
+    RAICES_GENERO = ["nacid", "interesad", "alumn"]
+    for raiz in RAICES_GENERO:
+        masc, fem = raiz + "o", raiz + "a"
+        patron = rf"{re.escape(masc)}\s*/\s*(?:{re.escape(fem)}|a)\b"
+        cambios[patron] = masc if es_m else fem
 
     candidatos = []  # (inicio, fin, texto_nuevo, forzar_negrita)
 
