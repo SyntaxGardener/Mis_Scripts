@@ -28,7 +28,14 @@ def fecha_castellano(v):
         return f"{f.day} de {MESES[f.month]} de {f.year}"
     except: return str(v)
 
-def aplicar_genero_y_marcadores(texto, sexo, reemplazos):
+def calcular_segmentos(texto_original, sexo, reemplazos):
+    """
+    Analiza el texto ORIGINAL del párrafo (antes de sustituir nada) y devuelve
+    una lista de segmentos a reemplazar: (inicio, fin, texto_nuevo, forzar_negrita).
+    Trabajar sobre las posiciones del texto original (en vez de sobre el texto
+    ya sustituido) es lo que evita el desajuste de negritas cuando el texto
+    insertado tiene una longitud distinta al marcador o a la palabra original.
+    """
     s = str(sexo).strip().upper()
     es_m = "M" in s
     cambios = {
@@ -39,44 +46,128 @@ def aplicar_genero_y_marcadores(texto, sexo, reemplazos):
         r"alumno/a": "alumno" if es_m else "alumna",
         r"el/la": "el" if es_m else "la"
     }
-    for original, sustituto in cambios.items():
-        texto = re.sub(original, sustituto, texto, flags=re.IGNORECASE)
-    for frase in NEG_FRASES:
-        texto = texto.replace(frase, f"<b>{frase}</b>")
-    for m, v in reemplazos.items():
-        if normalizar(m) in NEG_CAMPOS:
-            texto = texto.replace(f"[{m}]", f"<b>{v}</b>")
-        else:
-            texto = texto.replace(f"[{m}]", str(v))
-    return texto
 
-def reconstruir_parrafo(parrafo, texto_con_tags):
+    candidatos = []  # (inicio, fin, texto_nuevo, forzar_negrita)
+
+    for patron, sustituto in cambios.items():
+        for m in re.finditer(patron, texto_original, flags=re.IGNORECASE):
+            candidatos.append((m.start(), m.end(), sustituto, False))
+
+    for frase in NEG_FRASES:
+        for m in re.finditer(re.escape(frase), texto_original):
+            candidatos.append((m.start(), m.end(), frase, True))
+
+    for m in re.finditer(r"\[([^\]]+)\]", texto_original):
+        campo = m.group(1)
+        valor = reemplazos.get(campo, m.group(0))
+        forzar = normalizar(campo) in NEG_CAMPOS
+        candidatos.append((m.start(), m.end(), str(valor), forzar))
+
+    # Ordenamos por posición de inicio y descartamos solapes (no deberían darse,
+    # pero por seguridad nos quedamos con el primero que aparece)
+    candidatos.sort(key=lambda c: c[0])
+    segmentos = []
+    fin_anterior = -1
+    for inicio, fin, nuevo, forzar in candidatos:
+        if inicio < fin_anterior:
+            continue
+        segmentos.append((inicio, fin, nuevo, forzar))
+        fin_anterior = fin
+    return segmentos
+
+def reconstruir_parrafo(parrafo, segmentos):
     if not parrafo.runs: return
-    run_base = parrafo.runs[0]
-    f_name, f_size, bold_base = run_base.font.name, run_base.font.size, run_base.bold
-    for r in parrafo.runs: r.text = ""
-    partes = re.split(r"(<b>.*?</b>)", texto_con_tags)
-    for parte in partes:
-        if parte.startswith("<b>") and parte.endswith("</b>"):
-            run = parrafo.add_run(parte[3:-4])
-            run.bold = True
-        else:
-            if not parte: continue
-            run = parrafo.add_run(parte)
-            run.bold = bold_base
-        if f_name:
-            run.font.name, run.font.size = f_name, f_size
+
+    # Guardamos una copia del formato de cada run original
+    runs_guardados = []
+    for r in parrafo.runs:
+        runs_guardados.append({
+            "bold": r.bold,
+            "italic": r.italic,
+            "underline": r.underline,
+            "font_name": r.font.name,
+            "font_size": r.font.size,
+            "font_color": r.font.color.rgb if r.font.color and r.font.color.type else None,
+            "highlight": r.font.highlight_color,
+            "strike": r.font.strike,
+            "subscript": r.font.subscript,
+            "superscript": r.font.superscript,
+            "texto_orig": r.text,
+        })
+
+    texto_original = "".join(rd["texto_orig"] for rd in runs_guardados)
+    fmt_base = runs_guardados[0] if runs_guardados else {}
+
+    # Mapa de (inicio, fin, formato) por posición de carácter en el texto ORIGINAL
+    bold_map = []
+    pos = 0
+    for rd in runs_guardados:
+        n = len(rd["texto_orig"])
+        bold_map.append((pos, pos + n, rd))
+        pos += n
+
+    def fmt_para_pos(posicion):
+        for inicio, fin, rd in bold_map:
+            if inicio <= posicion < fin:
+                return rd
+        return fmt_base
+
+    def aplicar_formato(run, fmt, forzar_negrita=False):
+        run.bold = True if forzar_negrita else fmt.get("bold")
+        run.italic = fmt.get("italic")
+        run.underline = fmt.get("underline")
+        run.font.name = fmt.get("font_name")
+        run.font.size = fmt.get("font_size")
+        if fmt.get("font_color"):
+            run.font.color.rgb = fmt.get("font_color")
+        run.font.highlight_color = fmt.get("highlight")
+        run.font.strike = fmt.get("strike")
+        run.font.subscript = fmt.get("subscript")
+        run.font.superscript = fmt.get("superscript")
+
+    def emitir_tramo_original(ini, fin):
+        """Copia texto_original[ini:fin] respetando el formato original carácter a carácter."""
+        p = ini
+        while p < fin:
+            fmt = fmt_para_pos(p)
+            fin_run = next((f for (i, f, rd) in bold_map if i <= p < f), fin)
+            corte = min(fin_run, fin)
+            trozo = texto_original[p:corte]
+            if trozo:
+                run = parrafo.add_run(trozo)
+                aplicar_formato(run, fmt, forzar_negrita=False)
+            p = corte
+
+    # Guardamos los elementos XML originales para poder eliminarlos al final
+    # (en vez de dejarlos vacíos, lo que ensuciaría el documento)
+    elementos_originales = [r._element for r in parrafo.runs]
+
+    pos_actual = 0
+    for inicio, fin, nuevo, forzar in segmentos:
+        emitir_tramo_original(pos_actual, inicio)
+        if nuevo:
+            fmt = fmt_para_pos(inicio)
+            run = parrafo.add_run(nuevo)
+            aplicar_formato(run, fmt, forzar_negrita=forzar)
+        pos_actual = fin
+    emitir_tramo_original(pos_actual, len(texto_original))
+
+    # Eliminamos los runs originales (los nuevos ya se añadieron al final del párrafo)
+    for el in elementos_originales:
+        el.getparent().remove(el)
 
 def procesar_todo(doc, reemplazos, sexo):
     for p in doc.paragraphs:
-        txt_mod = aplicar_genero_y_marcadores(p.text, sexo, reemplazos)
-        reconstruir_parrafo(p, txt_mod)
+        segmentos = calcular_segmentos(p.text, sexo, reemplazos)
+        if segmentos:
+            reconstruir_parrafo(p, segmentos)
     for tabla in doc.tables:
         for fila in tabla.rows:
             for celda in fila.cells:
                 for p in celda.paragraphs:
-                    txt_mod = aplicar_genero_y_marcadores(p.text, sexo, reemplazos)
-                    reconstruir_parrafo(p, txt_mod)
+                    segmentos = calcular_segmentos(p.text, sexo, reemplazos)
+                    if segmentos:
+                        reconstruir_parrafo(p, segmentos)
 
 # --- INTERFAZ GRÁFICA ---
 class AppCertificadosCentrado:
@@ -165,6 +256,11 @@ class AppCertificadosCentrado:
             full_text = "".join([p.text for p in doc_temp.paragraphs])
             marcadores = set(re.findall(r"\[([^\]]+)\]", full_text))
 
+            # Clave del marcador "nombre" tal y como aparece en la plantilla
+            # (puede estar escrito como [nombre], [Nombre], [NOMBRE]...)
+            clave_nombre = next((m for m in marcadores if normalizar(m) == "nombre"), None)
+
+            nombres_usados = {}
             for idx, fila in df.iterrows():
                 doc = Document(self.plantilla)
                 sexo = fila.get("sexo", "F")
@@ -179,8 +275,24 @@ class AppCertificadosCentrado:
                     reemplazos[m] = "" if pd.isna(val) else str(val)
 
                 procesar_todo(doc, reemplazos, sexo)
-                nom = "".join(c for c in str(fila.get("nombre", f"Cert_{idx}")) if c not in r'\/:*?"<>|')
-                doc.save(os.path.join(folder, f"Certificado_{nom}.docx"))
+
+                # Nombre base del archivo: el valor ya resuelto del campo [nombre]
+                # (si la plantilla lo tiene); si no, recurrimos a la columna "nombre" del Excel
+                if clave_nombre and reemplazos.get(clave_nombre):
+                    nombre_persona = reemplazos[clave_nombre]
+                else:
+                    nombre_persona = str(fila.get("nombre", f"Cert_{idx}"))
+
+                nom = "".join(c for c in nombre_persona if c not in r'\/:*?"<>|').strip()
+                if not nom:
+                    nom = f"Cert_{idx}"
+
+                # Evitamos sobrescribir si hay dos personas con el mismo nombre
+                veces = nombres_usados.get(nom, 0)
+                nombres_usados[nom] = veces + 1
+                nombre_archivo = nom if veces == 0 else f"{nom} ({veces + 1})"
+
+                doc.save(os.path.join(folder, f"{nombre_archivo}.docx"))
 
             messagebox.showinfo("Hecho", f"Se han generado {len(df)} certificados con éxito.")
             os.startfile(folder)
