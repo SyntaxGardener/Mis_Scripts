@@ -263,7 +263,10 @@ class AppCertificadosCentrado:
             nombres_usados = {}
             for idx, fila in df.iterrows():
                 doc = Document(self.plantilla)
-                sexo = fila.get("sexo", "F")
+                col_sexo = cols_norm.get("sexo", "")
+                sexo = fila.get(col_sexo, "F") if col_sexo else "F"
+                if pd.isna(sexo) or not str(sexo).strip():
+                    sexo = "F"
                 reemplazos = {}
                 for m in marcadores:
                     col = cols_norm.get(normalizar(m), "")
