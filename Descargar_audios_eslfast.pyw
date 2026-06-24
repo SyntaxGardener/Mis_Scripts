@@ -27,6 +27,10 @@ AUDIO_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Para extraer el título de la página (lo usamos en el nombre del archivo)
+TITLE_PATTERN = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]')
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -61,23 +65,51 @@ def find_audio_urls(html, page_url):
     return found
 
 
-def safe_filename(audio_url, fallback_slug, index, total):
-    """Elige un nombre de archivo razonable para el audio descargado."""
+def extract_page_title(html):
+    """Extrae el contenido de <title>...</title>, limpio de espacios y
+    de prefijos habituales como 'Conversation:' o 'Dialogue:'."""
+    match = TITLE_PATTERN.search(html)
+    if not match:
+        return None
+    raw = re.sub(r"\s+", " ", match.group(1)).strip()
+    raw = re.sub(r"^(conversation|dialogue|dialog)\s*:\s*", "", raw, flags=re.IGNORECASE)
+    return raw.strip() or None
+
+
+def sanitize_filename_part(text, max_len=80):
+    """Quita caracteres no válidos en nombres de archivo de Windows."""
+    text = INVALID_FILENAME_CHARS.sub("", text)
+    text = text.strip(" .")
+    if len(text) > max_len:
+        text = text[:max_len].rstrip()
+    return text
+
+
+def safe_filename(audio_url, fallback_slug, index, total, page_title=None):
+    """Elige un nombre de archivo razonable para el audio descargado,
+    incluyendo el título de la página si está disponible."""
     name = os.path.basename(urllib.parse.urlsplit(audio_url).path)
     if not name or "." not in name:
         suffix = "" if total <= 1 else f"_{index}"
         name = f"{fallback_slug}{suffix}.mp3"
+
+    if page_title:
+        title_part = sanitize_filename_part(page_title)
+        if title_part:
+            base, ext = os.path.splitext(name)
+            name = f"{title_part} - {base}{ext}"
+
     return name
 
 
-def download_file(audio_url, dest_folder, fallback_slug, index, total):
+def download_file(audio_url, dest_folder, fallback_slug, index, total, page_title=None):
     """Descarga un archivo de audio y lo guarda en dest_folder, evitando
     sobrescribir archivos existentes."""
     req = urllib.request.Request(audio_url, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=30) as resp:
         data = resp.read()
 
-    filename = safe_filename(audio_url, fallback_slug, index, total)
+    filename = safe_filename(audio_url, fallback_slug, index, total, page_title)
     path = os.path.join(dest_folder, filename)
     base, ext = os.path.splitext(path)
     counter = 1
@@ -101,6 +133,7 @@ class App(tk.Tk):
             value=os.path.join(os.path.expanduser("~"), "Desktop")
         )
         self.open_after = tk.BooleanVar(value=True)
+        self.include_title = tk.BooleanVar(value=True)
 
         self._build_ui()
 
@@ -154,6 +187,12 @@ class App(tk.Tk):
             variable=self.open_after,
             font=("Segoe UI", 10),
         ).pack(side="left")
+        tk.Checkbutton(
+            options_frame,
+            text="Incluir el título de la conversación en el nombre",
+            variable=self.include_title,
+            font=("Segoe UI", 10),
+        ).pack(side="left", padx=(14, 0))
 
         # Botón de descarga
         btn_frame = tk.Frame(main)
@@ -243,10 +282,13 @@ class App(tk.Tk):
                         )[0]
                         or "audio"
                     )
+                    page_title = (
+                        extract_page_title(html) if self.include_title.get() else None
+                    )
                     for idx, audio_url in enumerate(audio_urls, start=1):
                         try:
                             saved_path = download_file(
-                                audio_url, dest, slug, idx, len(audio_urls)
+                                audio_url, dest, slug, idx, len(audio_urls), page_title
                             )
                             self.after(
                                 0,
