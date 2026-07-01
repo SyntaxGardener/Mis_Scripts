@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Descargador Portable — YouTube + RTVE + EducaMadrid + Eduboom
+# Descargador Portable — YouTube + RTVE + EducaMadrid + Eduboom + TikTok
 # Requiere: pip install yt-dlp requests beautifulsoup4 selenium webdriver-manager
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -21,6 +21,7 @@ ACCENT    = "#2e7d32"          # verde YouTube
 ACCENT2   = "#1565c0"          # azul RTVE
 ACCENT3   = "#6a1b9a"          # morado EducaMadrid
 ACCENT4   = "#e65100"          # naranja Eduboom
+ACCENT5   = "#000000"          # negro TikTok
 BTN_FG    = "#ffffff"
 SEP_CLR   = "#b0b8c8"
 # ──────────────────────────────────────────────────────────────────────────────
@@ -58,7 +59,7 @@ class DescargadorApp:
 
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Descargador Portable — YouTube, RTVE, EducaMadrid & Eduboom")
+        self.root.title("Descargador Portable — YouTube, RTVE, EducaMadrid, Eduboom & TikTok")
         self.root.configure(bg=BG)
         self.root.resizable(True, False)
         self._busy = False
@@ -81,6 +82,11 @@ class DescargadorApp:
         self.eduboom_url = tk.StringVar()
         self.eduboom_folder = tk.StringVar()
         self.eduboom_open_folder = tk.BooleanVar(value=False)
+
+        self.tiktok_url = tk.StringVar()
+        self.tiktok_folder = tk.StringVar()
+        self.tiktok_format = tk.StringVar(value="video")
+        self.tiktok_open_folder = tk.BooleanVar(value=False)
 
         self._build_ui()
         self._place_window()
@@ -125,13 +131,15 @@ class DescargadorApp:
         t_rtve = tk.Frame(nb, bg=BG, padx=16, pady=12)
         t_educa = tk.Frame(nb, bg=BG, padx=16, pady=12)
         t_eduboom = tk.Frame(nb, bg=BG, padx=16, pady=12)
+        t_tiktok = tk.Frame(nb, bg=BG, padx=16, pady=12)
         
         nb.add(t_yt, text="  ▶  YouTube  ")
         nb.add(t_rtve, text="  📺  RTVE  ")
         nb.add(t_educa, text="  🎓  EducaMadrid  ")
         nb.add(t_eduboom, text="  📚  Eduboom  ")
+        nb.add(t_tiktok, text="  🎵  TikTok  ")
 
-        ACCENT_MAP = {0: ACCENT, 1: ACCENT2, 2: ACCENT3, 3: ACCENT4}
+        ACCENT_MAP = {0: ACCENT, 1: ACCENT2, 2: ACCENT3, 3: ACCENT4, 4: ACCENT5}
         def _on_tab_change(event):
             idx = nb.index(nb.select())
             color = ACCENT_MAP.get(idx, ACCENT)
@@ -142,6 +150,7 @@ class DescargadorApp:
         self._build_rtve_tab(t_rtve)
         self._build_educa_tab(t_educa)
         self._build_eduboom_tab(t_eduboom)
+        self._build_tiktok_tab(t_tiktok)
 
     def _lbl(self, parent, text):
         tk.Label(parent, text=text, bg=BG, fg=FG2, font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(8, 1))
@@ -212,6 +221,20 @@ class DescargadorApp:
         self._entry_row(parent, self.eduboom_folder, "Explorar…", lambda: self._browse_folder(self.eduboom_folder))
         tk.Checkbutton(parent, text="Abrir carpeta al terminar", variable=self.eduboom_open_folder, bg=BG, fg=FG2, selectcolor=BG2, activebackground=BG, font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(4, 0))
         self._big_btn(parent, "⬇  Descargar de Eduboom", self._eduboom_start, ACCENT4)
+
+    def _build_tiktok_tab(self, parent):
+        tk.Label(parent, text="Pega la URL de un vídeo de TikTok\n(tiktok.com/@usuario/video/ID)", bg=BG, fg=FG2, font=("Segoe UI", 8), justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 4))
+        self._lbl(parent, "URL de TikTok:")
+        self._url_entry_row(parent, self.tiktok_url, ACCENT5)
+        self._lbl(parent, "Carpeta de destino:")
+        self._entry_row(parent, self.tiktok_folder, "Explorar…", lambda: self._browse_folder(self.tiktok_folder))
+        fmt_f = tk.Frame(parent, bg=BG)
+        fmt_f.pack(fill=tk.X, pady=(10, 2))
+        tk.Label(fmt_f, text="Formato:", bg=BG, fg=FG2, font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        for lbl, val in [("Vídeo (sin marca de agua)", "video"), ("Solo audio (MP3)", "mp3")]:
+            tk.Radiobutton(fmt_f, text=lbl, variable=self.tiktok_format, value=val, bg=BG, fg=FG, selectcolor=BG2, activebackground=BG, font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=6)
+        tk.Checkbutton(parent, text="Abrir carpeta al terminar", variable=self.tiktok_open_folder, bg=BG, fg=FG2, selectcolor=BG2, activebackground=BG, font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(4, 0))
+        self._big_btn(parent, "⬇  Descargar de TikTok", self._tiktok_start, ACCENT5)
 
     def _browse_folder(self, var):
         d = filedialog.askdirectory(title="Carpeta de destino")
@@ -685,6 +708,41 @@ class DescargadorApp:
         folder = os.path.normpath(folder)
         self._busy = True
         threading.Thread(target=self._eduboom_descargar, args=(url, folder, self.eduboom_open_folder.get()), daemon=True).start()
+
+    # ── TikTok ────────────────────────────────────────────────────────────────
+    # yt-dlp soporta TikTok de forma nativa (sin marca de agua cuando está disponible).
+
+    def _tiktok_start(self):
+        if self._busy:
+            return
+        url = self.tiktok_url.get().strip()
+        folder = self.tiktok_folder.get().strip()
+        if not url or not folder:
+            messagebox.showwarning("Atención", "Introduce la URL y selecciona una carpeta.")
+            return
+        if "tiktok.com" not in url:
+            messagebox.showwarning("Atención", "La URL introducida no parece ser de TikTok.")
+            return
+        folder = os.path.normpath(folder)
+        fmt = self.tiktok_format.get()
+        ydl_opts = {
+            'outtmpl': os.path.join(folder, '%(uploader)s_%(id)s.%(ext)s'),
+            'noplaylist': True,
+            'ffmpeg_location': RUTA_FFMPEG,
+            'progress_hooks': [self._progress_hook],
+        }
+        if fmt == "mp3":
+            ydl_opts.update({
+                'format': 'bestaudio/best',
+                'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
+            })
+        else:
+            # yt-dlp prioriza automáticamente el vídeo "playAddr" sin marca de agua cuando existe
+            ydl_opts['format'] = 'bestvideo+bestaudio/best'
+            ydl_opts['merge_output_format'] = 'mp4'
+        self._busy = True
+        self._status(f"Iniciando descarga TikTok ({fmt})…")
+        threading.Thread(target=self._run_download, args=(ydl_opts, url, folder, self.tiktok_open_folder.get()), daemon=True).start()
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
