@@ -56,6 +56,7 @@ LIBRERIAS_BASE = [
     ("pydub",             "pydub",             "Manipulación de Audio",      False),
     ("docxtpl",           "docxtpl",           "Plantillas Word (Jinja2)",   False),
     ("bs4",               "beautifulsoup4",    "Web Scraping",               True),
+    ("img2pdf",           "img2pdf",           "Imágenes a PDF",             False),
     ("google.genai",      "google-genai",      "Gemini API",                 False),
     ("anthropic",         "anthropic",         "Claude API",                 False),
     ("groq",              "groq",              "Groq API",                   False),
