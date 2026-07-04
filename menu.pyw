@@ -611,7 +611,7 @@ class MenuFinalPerfecto:
         n = nombre.lower()
         if nombre in self.favoritos:
             return "FAVORITOS"
-        if any(x in n for x in ["expulsar", "pc", "test", "usb", "windows",
+        if any(x in n for x in ["expulsar", "test", "usb", "windows",
                                   "imports", "limpieza", "metadatos", "borrar", "temp",
                                   "cerrar", "portapapeles", "organizador"]):
             return "SISTEMA"
@@ -623,7 +623,7 @@ class MenuFinalPerfecto:
             return "AUDIO & VÍDEO"
         if any(x in n for x in ["imagen", "image"]):
             return "IMAGEN"
-        if any(x in n for x in ["horario", "diligencia", "gestion",
+        if any(x in n for x in ["horario", "diligencia", "gestion", "inscripciones",
                                   "certificado", "calculador", "diploma", "sauce"]):
             return "ADMINISTRACIÓN"
         if any(x in n for x in ["bingo", "crono", "game", "pasapalabra",
