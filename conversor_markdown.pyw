@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-markitdown.pyw  –  Convierte archivos y URLs a Markdown
+markitdown.pyw  –  Convierte archivos y URLs a Markdown, y Markdown a otros formatos
 Parte del TOOLBOX · RCM
 """
 
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox
 import threading
 import os
 import sys
@@ -57,6 +57,22 @@ EXTENSIONES_ADMITIDAS = (
     ("Todos",         "*.*"),
 )
 
+EXTENSIONES_MD = (
+    ("Markdown", "*.md *.markdown"),
+    ("Todos",    "*.*"),
+)
+
+# (etiqueta visible, formato "to" de pandoc, extensión del archivo de salida)
+FORMATOS_DESTINO = [
+    ("Word (.docx)",        "docx",  "docx"),
+    ("PDF (.pdf)",          "pdf",   "pdf"),
+    ("HTML (.html)",        "html",  "html"),
+    ("OpenDocument (.odt)", "odt",   "odt"),
+    ("EPUB (.epub)",        "epub",  "epub"),
+    ("RTF (.rtf)",          "rtf",   "rtf"),
+    ("Texto plano (.txt)",  "plain", "txt"),
+]
+
 
 class MarkItDownApp:
     def __init__(self, root: tk.Tk):
@@ -65,15 +81,17 @@ class MarkItDownApp:
         self.root.configure(bg=BG_ROOT)
         self.root.resizable(True, True)
 
-        ancho, alto = 760, 700
+        ancho, alto = 780, 760
         sw = self.root.winfo_screenwidth()
         px = (sw - ancho) // 2
         self.root.geometry(f"{ancho}x{alto}+{px}+5")
-        self.root.minsize(580, 500)
+        self.root.minsize(600, 580)
 
-        self._archivos   = []
-        self._ultimo_dir = os.path.expanduser("~")
-        self._en_proceso = False
+        self._archivos     = []   # cola "a Markdown"
+        self._archivos_md  = []   # cola "desde Markdown"
+        self._ultimo_dir   = os.path.expanduser("~")
+        self._en_proceso   = False
+        self._pandoc_listo = False
 
         self._construir_ui()
 
@@ -83,14 +101,70 @@ class MarkItDownApp:
         hdr.pack(fill="x", padx=20, pady=(14, 4))
         tk.Label(hdr, text="MarkItDown", fg=FG_MAIN, bg=BG_ROOT,
                  font=FONT_TITLE).pack(side="left")
-        tk.Label(hdr, text=" · convierte archivos y URLs a Markdown",
+        tk.Label(hdr, text=" · convierte archivos, URLs y Markdown",
                  fg=FG_MUTED, bg=BG_ROOT,
                  font=("Segoe UI", 10)).pack(side="left", pady=(3, 0))
 
-        zona = tk.Frame(self.root, bg=BG_PANEL)
-        zona.pack(fill="x", padx=20, pady=(6, 0))
+        # ── Estilo oscuro para las pestañas ──
+        style = ttk.Style()
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure("TNotebook", background=BG_ROOT, borderwidth=0)
+        style.configure("TNotebook.Tab", background=BG_CARD, foreground=FG_MUTED,
+                         font=FONT_BOLD, padding=(16, 8), borderwidth=0)
+        style.map("TNotebook.Tab",
+                  background=[("selected", BG_PANEL)],
+                  foreground=[("selected", ACENTO)])
 
-        # — Archivos —
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill="x", padx=20, pady=(6, 0))
+
+        tab_a_md     = tk.Frame(self.notebook, bg=BG_PANEL)
+        tab_desde_md = tk.Frame(self.notebook, bg=BG_PANEL)
+        self.notebook.add(tab_a_md,     text="  → A Markdown  ")
+        self.notebook.add(tab_desde_md, text="  Markdown →  ")
+
+        self._construir_tab_a_markdown(tab_a_md)
+        self._construir_tab_desde_markdown(tab_desde_md)
+
+        # ── Log (compartido por ambas pestañas) ──
+        tk.Frame(self.root, bg="#1a1a1a", height=1).pack(fill="x", padx=20, pady=(8, 0))
+
+        log_hdr = tk.Frame(self.root, bg=BG_ROOT)
+        log_hdr.pack(fill="x", padx=20, pady=(8, 2))
+        tk.Label(log_hdr, text="RESULTADO", fg=FG_MUTED, bg=BG_ROOT,
+                 font=FONT_BOLD).pack(side="left")
+        self._btn(log_hdr, "Limpiar log", "#333",
+                  self._limpiar_log).pack(side="right")
+
+        log_frame = tk.Frame(self.root, bg=BG_ROOT)
+        log_frame.pack(fill="both", expand=True, padx=20, pady=(0, 14))
+        self.txt_log = tk.Text(
+            log_frame, bg=BG_CARD, fg=FG_MAIN,
+            insertbackground="white", font=FONT_MONO,
+            borderwidth=0, highlightthickness=0,
+            state="disabled", wrap="word"
+        )
+        sb_log = tk.Scrollbar(log_frame, orient="vertical",
+                              command=self.txt_log.yview)
+        self.txt_log.config(yscrollcommand=sb_log.set)
+        self.txt_log.pack(side="left", fill="both", expand=True)
+        sb_log.pack(side="right", fill="y")
+
+        self.txt_log.tag_config("ok",   foreground=ACENTO_OK)
+        self.txt_log.tag_config("err",  foreground=ACENTO_ERR)
+        self.txt_log.tag_config("info", foreground=ACENTO)
+        self.txt_log.tag_config("warn", foreground=ACENTO_WARN)
+        self.txt_log.tag_config("dim",  foreground=FG_MUTED)
+
+        self._log("info", "Listo. Añade archivos o pega una URL y pulsa Convertir.\n")
+        self._log("dim",  "A Markdown: PDF · DOCX · PPTX · XLSX · CSV · HTML · imágenes · audio\n")
+        self._log("dim",  "Desde Markdown: DOCX · PDF · HTML · ODT · EPUB · RTF · TXT\n")
+
+    # ── TAB 1: a Markdown ───────────────────────────────────────────────
+    def _construir_tab_a_markdown(self, zona):
         sec_arch = tk.Frame(zona, bg=BG_PANEL)
         sec_arch.pack(fill="x", padx=12, pady=(10, 4))
         tk.Label(sec_arch, text="ARCHIVOS", fg=FG_MUTED, bg=BG_PANEL,
@@ -166,10 +240,8 @@ class MarkItDownApp:
                   self._elegir_carpeta_salida).pack(side="right")
 
         # ── Botón principal ──
-        tk.Frame(self.root, bg="#1a1a1a", height=1).pack(fill="x", padx=20, pady=(8, 0))
-
-        accion = tk.Frame(self.root, bg=BG_ROOT)
-        accion.pack(fill="x", padx=20, pady=10)
+        accion = tk.Frame(zona, bg=BG_PANEL)
+        accion.pack(fill="x", padx=12, pady=(4, 12))
 
         self.btn_convertir = tk.Button(
             accion, text="▶  CONVERTIR ARCHIVOS",
@@ -183,40 +255,105 @@ class MarkItDownApp:
         self.btn_convertir.bind("<Enter>", lambda e: self.btn_convertir.config(bg="#80deea"))
         self.btn_convertir.bind("<Leave>", lambda e: self.btn_convertir.config(bg=ACENTO))
 
-        self.canvas_prog = tk.Canvas(accion, bg=BG_PANEL,
+        self.canvas_prog = tk.Canvas(accion, bg=BG_CARD,
                                      height=6, highlightthickness=0, bd=0)
         self.canvas_prog.pack(side="left", fill="x", expand=True, padx=(14, 0))
 
-        # ── Log ──
-        log_hdr = tk.Frame(self.root, bg=BG_ROOT)
-        log_hdr.pack(fill="x", padx=20, pady=(4, 2))
-        tk.Label(log_hdr, text="RESULTADO", fg=FG_MUTED, bg=BG_ROOT,
+    # ── TAB 2: desde Markdown ────────────────────────────────────────────
+    def _construir_tab_desde_markdown(self, zona):
+        sec_arch = tk.Frame(zona, bg=BG_PANEL)
+        sec_arch.pack(fill="x", padx=12, pady=(10, 4))
+        tk.Label(sec_arch, text="ARCHIVOS MARKDOWN", fg=FG_MUTED, bg=BG_PANEL,
                  font=FONT_BOLD).pack(side="left")
-        self._btn(log_hdr, "Limpiar log", "#333",
-                  self._limpiar_log).pack(side="right")
+        self.lbl_num_md = tk.Label(sec_arch, text="ninguno seleccionado",
+                                   fg=FG_DIM, bg=BG_PANEL, font=FONT_MONO)
+        self.lbl_num_md.pack(side="left", padx=10)
 
-        log_frame = tk.Frame(self.root, bg=BG_ROOT)
-        log_frame.pack(fill="both", expand=True, padx=20, pady=(0, 14))
-        self.txt_log = tk.Text(
-            log_frame, bg=BG_CARD, fg=FG_MAIN,
-            insertbackground="white", font=FONT_MONO,
-            borderwidth=0, highlightthickness=0,
-            state="disabled", wrap="word"
+        fila_btns = tk.Frame(zona, bg=BG_PANEL)
+        fila_btns.pack(fill="x", padx=12, pady=(0, 6))
+        self._btn(fila_btns, "＋ Añadir archivos .md", ACENTO,
+                  self._seleccionar_archivos_md).pack(side="left", padx=(0, 6))
+        self._btn(fila_btns, "✕ Limpiar lista", "#555",
+                  self._limpiar_lista_md).pack(side="left")
+
+        frame_lista = tk.Frame(zona, bg=BG_PANEL)
+        frame_lista.pack(fill="x", padx=12, pady=(0, 4))
+        self.lb_archivos_md = tk.Listbox(
+            frame_lista, bg=BG_CARD, fg=FG_MAIN,
+            selectbackground=ACENTO, selectforeground=BG_ROOT,
+            font=FONT_MONO, height=4, borderwidth=0,
+            highlightthickness=0, activestyle="none"
         )
-        sb_log = tk.Scrollbar(log_frame, orient="vertical",
-                              command=self.txt_log.yview)
-        self.txt_log.config(yscrollcommand=sb_log.set)
-        self.txt_log.pack(side="left", fill="both", expand=True)
-        sb_log.pack(side="right", fill="y")
+        sb_lista = tk.Scrollbar(frame_lista, orient="vertical",
+                                command=self.lb_archivos_md.yview)
+        self.lb_archivos_md.config(yscrollcommand=sb_lista.set)
+        self.lb_archivos_md.pack(side="left", fill="x", expand=True)
+        sb_lista.pack(side="right", fill="y")
 
-        self.txt_log.tag_config("ok",   foreground=ACENTO_OK)
-        self.txt_log.tag_config("err",  foreground=ACENTO_ERR)
-        self.txt_log.tag_config("info", foreground=ACENTO)
-        self.txt_log.tag_config("warn", foreground=ACENTO_WARN)
-        self.txt_log.tag_config("dim",  foreground=FG_MUTED)
+        self._btn(zona, "✕ Quitar seleccionado", "#333",
+                  self._quitar_seleccionado_md).pack(anchor="e", padx=12, pady=(2, 8))
 
-        self._log("info", "Listo. Añade archivos o pega una URL y pulsa Convertir.\n")
-        self._log("dim",  "Formatos: PDF · DOCX · PPTX · XLSX · CSV · HTML · imágenes · audio\n")
+        tk.Frame(zona, bg="#2a2a2a", height=1).pack(fill="x", padx=12, pady=4)
+
+        # — Formato de destino —
+        sec_fmt = tk.Frame(zona, bg=BG_PANEL)
+        sec_fmt.pack(fill="x", padx=12, pady=(6, 4))
+        tk.Label(sec_fmt, text="FORMATO DE SALIDA", fg=FG_MUTED, bg=BG_PANEL,
+                 font=FONT_BOLD).pack(anchor="w")
+
+        self.var_formato = tk.StringVar(value="docx")
+        grid_fmt = tk.Frame(zona, bg=BG_PANEL)
+        grid_fmt.pack(fill="x", padx=12, pady=(4, 10))
+        for i, (etiqueta, fmt, _ext) in enumerate(FORMATOS_DESTINO):
+            rb = tk.Radiobutton(
+                grid_fmt, text=etiqueta, value=fmt, variable=self.var_formato,
+                bg=BG_PANEL, fg=FG_MAIN, selectcolor=BG_CARD,
+                activebackground=BG_PANEL, activeforeground=ACENTO,
+                font=FONT_LABEL, highlightthickness=0, bd=0,
+                cursor="hand2"
+            )
+            rb.grid(row=i // 4, column=i % 4, sticky="w", padx=(0, 14), pady=2)
+
+        tk.Frame(zona, bg="#2a2a2a", height=1).pack(fill="x", padx=12, pady=4)
+
+        # — Carpeta de salida —
+        sec_out = tk.Frame(zona, bg=BG_PANEL)
+        sec_out.pack(fill="x", padx=12, pady=(6, 4))
+        tk.Label(sec_out, text="GUARDAR EN", fg=FG_MUTED, bg=BG_PANEL,
+                 font=FONT_BOLD).pack(side="left")
+        tk.Label(sec_out, text="  (vacío = misma carpeta que el archivo origen)",
+                 fg=FG_DIM, bg=BG_PANEL, font=FONT_LABEL).pack(side="left")
+
+        salida_frame = tk.Frame(zona, bg=BG_PANEL)
+        salida_frame.pack(fill="x", padx=12, pady=(4, 10))
+        self.entry_salida_md = tk.Entry(
+            salida_frame, bg=BG_SEARCH, fg=FG_MAIN,
+            insertbackground="white", borderwidth=0,
+            font=FONT_MONO, relief="flat"
+        )
+        self.entry_salida_md.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 8))
+        self._btn(salida_frame, "Elegir…", "#444",
+                  self._elegir_carpeta_salida_md).pack(side="right")
+
+        # ── Botón principal ──
+        accion = tk.Frame(zona, bg=BG_PANEL)
+        accion.pack(fill="x", padx=12, pady=(4, 12))
+
+        self.btn_convertir_md = tk.Button(
+            accion, text="▶  CONVERTIR DESDE MARKDOWN",
+            font=("Segoe UI Black", 11),
+            bg=ACENTO, fg=BG_ROOT,
+            relief="flat", padx=20, pady=10,
+            activebackground="#80deea", activeforeground=BG_ROOT,
+            cursor="hand2", command=self._convertir_desde_markdown
+        )
+        self.btn_convertir_md.pack(side="left")
+        self.btn_convertir_md.bind("<Enter>", lambda e: self.btn_convertir_md.config(bg="#80deea"))
+        self.btn_convertir_md.bind("<Leave>", lambda e: self.btn_convertir_md.config(bg=ACENTO))
+
+        self.canvas_prog_md = tk.Canvas(accion, bg=BG_CARD,
+                                        height=6, highlightthickness=0, bd=0)
+        self.canvas_prog_md.pack(side="left", fill="x", expand=True, padx=(14, 0))
 
     # ── helpers ───────────────────────────────────────────────────────────
     def _btn(self, parent, texto, color, cmd):
@@ -242,19 +379,20 @@ class MarkItDownApp:
         self.txt_log.delete("1.0", "end")
         self.txt_log.config(state="disabled")
 
-    def _set_progreso(self, pct):
+    def _set_progreso(self, pct, canvas=None):
+        canvas = canvas or self.canvas_prog
         def _do():
-            self.canvas_prog.update_idletasks()
-            w = self.canvas_prog.winfo_width()
-            h = self.canvas_prog.winfo_height()
-            self.canvas_prog.delete("all")
-            self.canvas_prog.create_rectangle(0, 0, w, h, fill=BG_CARD, outline="")
+            canvas.update_idletasks()
+            w = canvas.winfo_width()
+            h = canvas.winfo_height()
+            canvas.delete("all")
+            canvas.create_rectangle(0, 0, w, h, fill=BG_CARD, outline="")
             if pct > 0:
-                self.canvas_prog.create_rectangle(
+                canvas.create_rectangle(
                     0, 0, max(4, int(w * pct)), h, fill=ACENTO, outline="")
         self.root.after(0, _do)
 
-    # ── archivos ──────────────────────────────────────────────────────────
+    # ── archivos (a Markdown) ────────────────────────────────────────────
     def _seleccionar_archivos(self):
         rutas = filedialog.askopenfilenames(
             title="Seleccionar archivos",
@@ -296,6 +434,49 @@ class MarkItDownApp:
         if d:
             self.entry_salida.delete(0, "end")
             self.entry_salida.insert(0, d)
+
+    # ── archivos (desde Markdown) ────────────────────────────────────────
+    def _seleccionar_archivos_md(self):
+        rutas = filedialog.askopenfilenames(
+            title="Seleccionar archivos Markdown",
+            initialdir=self._ultimo_dir,
+            filetypes=EXTENSIONES_MD
+        )
+        for r in rutas:
+            if r not in self._archivos_md:
+                self._archivos_md.append(r)
+                self.lb_archivos_md.insert("end", os.path.basename(r))
+        if rutas:
+            self._ultimo_dir = os.path.dirname(rutas[0])
+        self._actualizar_contador_md()
+
+    def _quitar_seleccionado_md(self):
+        sel = self.lb_archivos_md.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        self.lb_archivos_md.delete(idx)
+        del self._archivos_md[idx]
+        self._actualizar_contador_md()
+
+    def _limpiar_lista_md(self):
+        self._archivos_md = []
+        self.lb_archivos_md.delete(0, "end")
+        self._actualizar_contador_md()
+
+    def _actualizar_contador_md(self):
+        n = len(self._archivos_md)
+        self.lbl_num_md.config(
+            text=f"{n} archivo{'s' if n!=1 else ''} seleccionado{'s' if n!=1 else ''}" if n else "ninguno seleccionado",
+            fg=ACENTO if n else FG_DIM
+        )
+
+    def _elegir_carpeta_salida_md(self):
+        d = filedialog.askdirectory(title="Carpeta de destino",
+                                    initialdir=self._ultimo_dir)
+        if d:
+            self.entry_salida_md.delete(0, "end")
+            self.entry_salida_md.insert(0, d)
 
     # ── URL ───────────────────────────────────────────────────────────────
     def _url_focus_in(self, _):
@@ -342,7 +523,7 @@ class MarkItDownApp:
         finally:
             self._en_proceso = False
 
-    # ── conversión de archivos ────────────────────────────────────────────
+    # ── conversión de archivos (a Markdown) ──────────────────────────────
     def _convertir_archivos(self):
         if self._en_proceso:
             return
@@ -363,7 +544,7 @@ class MarkItDownApp:
         total = len(rutas)
         ok_n  = 0
         err_n = 0
-        self._log("info", f"\n▶ Convirtiendo {total} archivo(s)…\n")
+        self._log("info", f"\n▶ Convirtiendo {total} archivo(s) a Markdown…\n")
 
         try:
             from markitdown import MarkItDown
@@ -412,6 +593,114 @@ class MarkItDownApp:
         self.root.after(800, lambda: self._set_progreso(0.0))
         self.root.after(0, lambda: self.btn_convertir.config(
             state="normal", text="▶  CONVERTIR ARCHIVOS"))
+        self._en_proceso = False
+
+    # ── conversión desde Markdown (docx, pdf, html, …) ───────────────────
+    def _asegurar_pandoc(self):
+        """Instala pypandoc y el binario de pandoc si hace falta.
+        Se ejecuta en el hilo de trabajo, así que puede tardar sin congelar la UI."""
+        if self._pandoc_listo:
+            return True
+        try:
+            import pypandoc
+        except ImportError:
+            self._log("dim", "  Instalando pypandoc…\n")
+            import subprocess
+            r = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "pypandoc", "-q"],
+                capture_output=True
+            )
+            if r.returncode != 0:
+                self._log("err", "  ✗  No se pudo instalar pypandoc.\n")
+                return False
+            import pypandoc  # noqa
+
+        import pypandoc
+        try:
+            pypandoc.get_pandoc_version()
+        except OSError:
+            self._log("dim", "  Descargando el motor de pandoc (solo la primera vez)…\n")
+            try:
+                pypandoc.download_pandoc()
+            except Exception as e:
+                self._log("err", f"  ✗  No se pudo descargar pandoc: {e}\n")
+                return False
+
+        self._pandoc_listo = True
+        return True
+
+    def _convertir_desde_markdown(self):
+        if self._en_proceso:
+            return
+        if not self._archivos_md:
+            messagebox.showwarning("Sin archivos", "Añade al menos un archivo Markdown a la lista.")
+            return
+        carpeta_forzada = self.entry_salida_md.get().strip() or None
+        formato = self.var_formato.get()
+        self._en_proceso = True
+        self.root.after(0, lambda: self.btn_convertir_md.config(
+            state="disabled", text="⏳ Procesando…"))
+        threading.Thread(
+            target=self._tarea_desde_markdown,
+            args=(list(self._archivos_md), carpeta_forzada, formato),
+            daemon=True
+        ).start()
+
+    def _tarea_desde_markdown(self, rutas, carpeta_forzada, formato):
+        total = len(rutas)
+        ok_n  = 0
+        err_n = 0
+
+        etiqueta_fmt, to_fmt, ext = next(
+            (e, f, x) for e, f, x in FORMATOS_DESTINO if f == formato
+        )
+        self._log("info", f"\n▶ Convirtiendo {total} archivo(s) Markdown a {etiqueta_fmt}…\n")
+
+        if not self._asegurar_pandoc():
+            self.root.after(0, lambda: self.btn_convertir_md.config(
+                state="normal", text="▶  CONVERTIR DESDE MARKDOWN"))
+            self._en_proceso = False
+            return
+
+        import pypandoc
+
+        for i, ruta in enumerate(rutas, 1):
+            nombre = os.path.basename(ruta)
+            self._log("dim", f"  [{i}/{total}]  {nombre}  … ")
+            self._set_progreso(i / total * 0.95, self.canvas_prog_md)
+
+            try:
+                if not os.path.isfile(ruta):
+                    raise FileNotFoundError(f"Archivo no encontrado: {ruta}")
+
+                dest_dir = carpeta_forzada if carpeta_forzada else os.path.dirname(ruta)
+                if not os.path.isdir(dest_dir):
+                    os.makedirs(dest_dir, exist_ok=True)
+
+                base = os.path.splitext(os.path.basename(ruta))[0]
+                dest = os.path.join(dest_dir, base + "." + ext)
+                if os.path.exists(dest):
+                    dest = os.path.join(dest_dir, base + "_converted." + ext)
+
+                pypandoc.convert_file(ruta, to=to_fmt, outputfile=dest)
+
+                ok_n += 1
+                self._log("ok", f"✓  {os.path.basename(dest)}\n")
+
+            except Exception as e:
+                err_n += 1
+                msg = str(e)
+                if formato == "pdf" and ("pdf-engine" in msg.lower() or "latex" in msg.lower()):
+                    self._log("err", "✗  Falta un motor PDF (instala MiKTeX/TeX Live o wkhtmltopdf).\n")
+                else:
+                    self._log("err", f"✗  {type(e).__name__}: {e}\n")
+
+        self._set_progreso(1.0, self.canvas_prog_md)
+        tag = "ok" if err_n == 0 else ("warn" if ok_n > 0 else "err")
+        self._log(tag, f"\n{'─'*44}\n  Total: {total}  ·  ✓ {ok_n}  ·  ✗ {err_n}\n")
+        self.root.after(800, lambda: self._set_progreso(0.0, self.canvas_prog_md))
+        self.root.after(0, lambda: self.btn_convertir_md.config(
+            state="normal", text="▶  CONVERTIR DESDE MARKDOWN"))
         self._en_proceso = False
 
 
