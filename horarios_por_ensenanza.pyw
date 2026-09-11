@@ -6,6 +6,8 @@ from docx import Document
 from docx.shared import RGBColor
 from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 import unicodedata
 from collections import defaultdict
 try:
@@ -67,6 +69,46 @@ def extraer_ensenanzas_y_profesores(ruta_docx):
 
     return dict(resultado)
 
+
+
+def _fijar_fuente_run(run, nombre_fuente="Arial"):
+    """Fuerza la fuente de un run tanto en texto normal como en eastasia/cs,
+    ya que Word puede llevar la fuente Cambria fijada a esos niveles."""
+    run.font.name = nombre_fuente
+    rPr = run._element.get_or_add_rPr()
+    rFonts = rPr.find(qn("w:rFonts"))
+    if rFonts is None:
+        rFonts = OxmlElement("w:rFonts")
+        rPr.append(rFonts)
+    for attr in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs"):
+        rFonts.set(qn(attr), nombre_fuente)
+
+
+def aplicar_formato_fuente(doc, nombre_fuente="Arial"):
+    """Pone toda la tabla en la fuente indicada y en negrita la fila de
+    días de la semana (fila 0) y la columna de horas (columna 0)."""
+    # Fuente por defecto del documento, por si hay texto sin 'run' explícito
+    try:
+        estilo_normal = doc.styles["Normal"]
+        estilo_normal.font.name = nombre_fuente
+        rPr = estilo_normal.element.get_or_add_rPr()
+        rFonts = rPr.find(qn("w:rFonts"))
+        if rFonts is None:
+            rFonts = OxmlElement("w:rFonts")
+            rPr.append(rFonts)
+        rFonts.set(qn("w:eastAsia"), nombre_fuente)
+    except Exception:
+        pass
+
+    for tabla in doc.tables:
+        for f_idx, fila in enumerate(tabla.rows):
+            for c_idx, celda in enumerate(fila.cells):
+                es_dia_u_hora = (f_idx == 0) or (c_idx == 0)
+                for p in celda.paragraphs:
+                    for run in p.runs:
+                        _fijar_fuente_run(run, nombre_fuente)
+                        if es_dia_u_hora:
+                            run.font.bold = True
 
 
 def pdf_a_docx(ruta_pdf):
@@ -535,6 +577,7 @@ class AppAuto:
                                         bottom.set(f"{{{WNS}}}space", "0")
                                         bottom.set(f"{{{WNS}}}color", "000000")
 
+                aplicar_formato_fuente(doc, "Arial")
                 doc.save(os.path.join(out_d, f"{tarea['nombre_archivo']}.docx"))
 
             if self.abrir_carpeta.get():
