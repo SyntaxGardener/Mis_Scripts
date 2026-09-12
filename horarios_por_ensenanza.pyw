@@ -2570,8 +2570,30 @@ def pdf_a_docx(ruta_pdf):
     for r_idx, row in enumerate(collapsed):
         for c_idx, val in enumerate(row):
             cell = tabla.cell(r_idx, c_idx)
-            # Reemplazar saltos de línea internos por párrafos separados
-            partes = val.split("\n") if val else [""]
+
+            # El PDF a veces corta una entrada "MATERIA (PROFESOR)" justo
+            # entre la materia y el profesor por falta de ancho en la
+            # celda (ej.: "16:30 TALLER INGLÉS" en una línea y "(JOAQUÍN)"
+            # en la siguiente). Si se dejaran como párrafos separados, el
+            # filtrado posterior (que exige materia y profesor en el
+            # mismo párrafo) perdería la entrada entera. Aquí recomponemos
+            # esas líneas cortadas antes de crear los párrafos.
+            crudas = val.split("\n") if val else [""]
+            partes = []
+            i = 0
+            while i < len(crudas):
+                actual = crudas[i].strip()
+                while i + 1 < len(crudas):
+                    siguiente = crudas[i + 1].strip()
+                    incompleta = (")" not in actual) and siguiente.startswith("(")
+                    parentesis_sin_cerrar = actual.count("(") > actual.count(")")
+                    if not (incompleta or parentesis_sin_cerrar):
+                        break
+                    i += 1
+                    actual = (actual + " " + siguiente).strip()
+                partes.append(actual)
+                i += 1
+
             cell.paragraphs[0].text = partes[0]
             cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
             for parte in partes[1:]:
