@@ -38,6 +38,21 @@ def _buscar_ghostscript():
     return None
 
 
+def _version_ghostscript(gs):
+    """Devuelve la versión de Ghostscript como tupla (major, minor) o None."""
+    try:
+        r = subprocess.run([gs, "--version"], capture_output=True,
+                           text=True, timeout=5,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+        txt = (r.stdout or "").strip()
+        m = re.match(r"(\d+)\.(\d+)", txt)
+        if m:
+            return (int(m.group(1)), int(m.group(2)))
+    except Exception:
+        pass
+    return None
+
+
 class SuiteDocumental:
     def __init__(self, root):
         self.root = root
@@ -163,7 +178,6 @@ class SuiteDocumental:
         self._nb1.bind("<<NotebookTabChanged>>", _on_nb1)
         self._nb2.bind("<<NotebookTabChanged>>", _on_nb2)
 
-        # También capturar clic directo (por si la pestaña ya estaba seleccionada)
         def _clic_nb1(event):
             tab = self._nb1.identify(event.x, event.y)
             if tab == "label":
@@ -189,7 +203,6 @@ class SuiteDocumental:
         self._nb1.bind("<Button-1>", _clic_nb1)
         self._nb2.bind("<Button-1>", _clic_nb2)
 
-        # Arranque: nb1 activo, nb2 sin resalte
         _activar_nb1()
         self._bloquear = True
         self._nb1.select(0)
@@ -210,14 +223,12 @@ class SuiteDocumental:
                  bg="#fafafa", fg="#b03a2e").pack(side="top", anchor="w", pady=(0, 15))
 
     def _checkbox_abrir(self, parent):
-        """Devuelve un BooleanVar con el checkbox 'Abrir carpeta al finalizar'."""
         var = tk.BooleanVar(value=True)
         tk.Checkbutton(parent, text="📂  Abrir carpeta de destino al finalizar",
                        variable=var, bg="#fafafa", font=("Arial", 9)).pack(anchor="w", pady=3)
         return var
 
     def _abrir_carpeta(self, ruta_archivo_o_carpeta, var):
-        """Abre en el explorador la carpeta si la opción está activa."""
         if var.get():
             if os.path.isdir(ruta_archivo_o_carpeta):
                 carpeta = ruta_archivo_o_carpeta
@@ -226,10 +237,6 @@ class SuiteDocumental:
             os.startfile(carpeta)
 
     def _lista_con_controles(self, parent, altura=9):
-        """
-        Crea un Listbox con scrollbar y botones ▲ ▼ ❌ al lado.
-        Devuelve el Listbox.
-        """
         frame = tk.Frame(parent, bg="#fafafa")
         frame.pack(fill="both", expand=True, pady=5)
 
@@ -298,11 +305,7 @@ class SuiteDocumental:
             self.lbl_info.config(text=os.path.basename(f), fg="#2d2580")
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  INICIO
-    # ══════════════════════════════════════════════════════════════════════════
-
-    # ══════════════════════════════════════════════════════════════════════════
-    #  📷  IMÁGENES A PDF  — miniaturas, reordenar, eliminar, nombre sugerido
+    #  📷  IMÁGENES A PDF
     # ══════════════════════════════════════════════════════════════════════════
 
     def mostrar_img_to_pdf(self):
@@ -317,11 +320,9 @@ class SuiteDocumental:
                   command=lambda: [self.archivos_cargados.clear(), self._refresh(lista)],
                   bg="#888780", fg="white").pack(side="left", expand=True, fill="x", padx=2)
 
-        # Panel: lista + previsualización
         panel = tk.Frame(self.main_frame, bg="#fafafa")
         panel.pack(fill="both", expand=True, pady=5)
 
-        # Izquierda: lista con controles
         f_izq = tk.Frame(panel, bg="#fafafa")
         f_izq.pack(side="left", fill="both", expand=True)
         tk.Label(f_izq, text="Imágenes (en orden):", bg="#fafafa",
@@ -347,7 +348,6 @@ class SuiteDocumental:
         tk.Button(btn_f, text="❌ Eliminar", fg="red",
                   command=lambda: self._eliminar(lista)).pack(side="left", padx=2)
 
-        # Derecha: previsualización
         f_der = tk.Frame(panel, bg="#f0f0fa", width=195,
                          relief="sunken", bd=1)
         f_der.pack(side="right", fill="y", padx=(10, 0))
@@ -421,7 +421,6 @@ class SuiteDocumental:
 
         tk.Frame(self.main_frame, bg="#e8e8f5", height=2).pack(fill="x", pady=4)
 
-        # ── Formato ──────────────────────────────────────────────────────────
         f_fmt = tk.Frame(self.main_frame, bg="#fafafa")
         f_fmt.pack(fill="x", pady=4)
         tk.Label(f_fmt, text="Formato:", bg="#fafafa",
@@ -432,7 +431,6 @@ class SuiteDocumental:
                            bg="#fafafa", font=("Arial", 9),
                            command=self._toggle_p2img_calidad).pack(side="left", padx=6)
 
-        # ── Resolución (DPI) ──────────────────────────────────────────────────
         f_dpi = tk.Frame(self.main_frame, bg="#fafafa")
         f_dpi.pack(fill="x", pady=4)
         tk.Label(f_dpi, text="Resolución:", bg="#fafafa",
@@ -446,7 +444,6 @@ class SuiteDocumental:
             tk.Radiobutton(f_dpi2, text=txt, variable=self.var_dpi, value=val,
                            bg="#fafafa", font=("Arial", 9)).pack(anchor="w", padx=20)
 
-        # ── Calidad JPEG (solo para JPG) ──────────────────────────────────────
         self.frame_calidad = tk.Frame(self.main_frame, bg="#fafafa")
         self.frame_calidad.pack(fill="x", pady=4)
         f_cal = tk.Frame(self.frame_calidad, bg="#fafafa")
@@ -460,7 +457,7 @@ class SuiteDocumental:
         tk.Label(f_cal, text="(solo JPG)", bg="#fafafa",
                  fg="gray", font=("Arial", 8)).pack(side="left", padx=6)
 
-        self._toggle_p2img_calidad()   # estado inicial
+        self._toggle_p2img_calidad()
 
         tk.Frame(self.main_frame, bg="#e8e8f5", height=2).pack(fill="x", pady=6)
 
@@ -474,7 +471,6 @@ class SuiteDocumental:
                   command=self.run_p2img).pack(fill="x", pady=8)
 
     def _toggle_p2img_calidad(self):
-        """Muestra el slider de calidad solo cuando el formato es JPG."""
         try:
             if self.var_fmt.get() == "JPG":
                 self.frame_calidad.pack(fill="x", pady=4)
@@ -534,7 +530,7 @@ class SuiteDocumental:
             messagebox.showerror("Error", str(e))
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  📄  WORD A PDF  — reordenar, un PDF c/u o uno único, abrir carpeta
+    #  📄  WORD A PDF
     # ══════════════════════════════════════════════════════════════════════════
 
     def mostrar_w_to_p(self):
@@ -576,7 +572,6 @@ class SuiteDocumental:
             word = win32com.client.DispatchEx("Word.Application")
 
             if self.var_w2p_modo.get() == 1:
-                # Un PDF por archivo
                 self.prog_w2p["maximum"] = len(self.archivos_cargados)
                 self.prog_w2p["value"]   = 0
                 for i, r in enumerate(self.archivos_cargados):
@@ -592,7 +587,6 @@ class SuiteDocumental:
                 self._abrir_carpeta(dest, self.var_w2p_abrir)
 
             else:
-                # Un único PDF
                 temps = []
                 self.prog_w2p["maximum"] = len(self.archivos_cargados) + 1
                 self.prog_w2p["value"]   = 0
@@ -626,7 +620,7 @@ class SuiteDocumental:
             messagebox.showerror("Error", str(e))
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  📝  PDF A WORD  — abrir carpeta
+    #  📝  PDF A WORD
     # ══════════════════════════════════════════════════════════════════════════
 
     def mostrar_p_to_w(self):
@@ -662,7 +656,7 @@ class SuiteDocumental:
             self._abrir_carpeta(dest, self.var_p2w_abrir)
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  ✂️  EXTRACTOR — visor con grupos, rotación, modos, nombres, progreso
+    #  ✂️  EXTRACTOR
     # ══════════════════════════════════════════════════════════════════════════
 
     def mostrar_extractor(self):
@@ -694,7 +688,6 @@ class SuiteDocumental:
 
         tk.Frame(self.main_frame, bg="#e8e8f5", height=2).pack(fill="x", pady=6)
 
-        # ── Modo de extracción ───────────────────────────────────────────────
         tk.Label(self.main_frame, text="Modo de extracción:",
                  bg="#fafafa", font=("Arial", 10, "bold")).pack(anchor="w")
         self.var_ext_modo = tk.IntVar(value=1)
@@ -708,7 +701,6 @@ class SuiteDocumental:
                        variable=self.var_ext_modo, value=3, bg="#fafafa",
                        command=self._toggle_ext_opts).pack(anchor="w")
 
-        # ── Nombre de los archivos (solo visible en modo 3) ──────────────────
         self.frame_nombres = tk.Frame(self.main_frame, bg="#fafafa")
         self.frame_nombres.pack(anchor="w", fill="x", pady=(6, 0))
 
@@ -743,7 +735,7 @@ class SuiteDocumental:
         self.ent_ext_prefijo = tk.Entry(f_op3, font=("Arial", 9), width=20)
         self.ent_ext_prefijo.pack(side="left", padx=(4, 0))
 
-        self._toggle_ext_opts()   # estado inicial
+        self._toggle_ext_opts()
 
         self.var_ext_abrir = self._checkbox_abrir(self.main_frame)
 
@@ -755,7 +747,6 @@ class SuiteDocumental:
                   command=self.run_ext).pack(fill="x", pady=8)
 
     def _toggle_ext_opts(self):
-        """Muestra el panel de nombres solo en modo 3 (agrupadas)."""
         if self.var_ext_modo.get() == 3:
             self.frame_nombres.pack(anchor="w", fill="x", pady=(6, 0))
         else:
@@ -763,7 +754,6 @@ class SuiteDocumental:
         self._toggle_nombre_ext()
 
     def _toggle_nombre_ext(self):
-        """Activa/desactiva los campos de texto según opción de nombre."""
         try:
             v = self.var_ext_nombre.get()
             self.ent_ext_campo.config(state="normal" if v == 2 else "disabled")
@@ -783,11 +773,9 @@ class SuiteDocumental:
 
     @staticmethod
     def _indices_to_str(indices):
-        """[0,1,2,4] (base 0) → '1-3, 5' (base 1). Respeta el orden original."""
         if not indices:
             return ""
-        ns = [i + 1 for i in indices]   # base 1, conserva orden
-        # Compactar consecutivos manteniendo dirección
+        ns = [i + 1 for i in indices]
         parts, start, prev = [], ns[0], ns[0]
         for n in ns[1:]:
             if n == prev + 1:
@@ -799,11 +787,6 @@ class SuiteDocumental:
         return "-".join(str(p) for p in parts) if len(parts) == 1 else ", ".join(parts)
 
     def _abrir_visor_paginas(self, modo="select"):
-        """
-        Toplevel con miniaturas de todas las páginas del PDF.
-        modo='select' : selección individual + grupos + rotar → rellena ent_r
-        modo='preview': clic para ampliar (separador)
-        """
         if not self.ruta_pdf_unico:
             messagebox.showwarning("Aviso", "Selecciona primero un PDF.")
             return
@@ -811,14 +794,13 @@ class SuiteDocumental:
         THUMB_W, THUMB_H = 88, 124
         CELL_W,  CELL_H  = 108, 158
         COLS = 6
-        # Paleta de colores para grupos (fondo, borde, texto)
         PALETA = [
-            ("#d5e8fd", "#2980b9", "#1a5276"),   # azul
-            ("#d5f5e3", "#27ae60", "#1e8449"),   # verde
-            ("#fdebd0", "#e67e22", "#a04000"),   # naranja
-            ("#f9ebea", "#e74c3c", "#922b21"),   # rojo
-            ("#e8daef", "#8e44ad", "#6c3483"),   # morado
-            ("#d6eaf8", "#1abc9c", "#148f77"),   # turquesa
+            ("#d5e8fd", "#2980b9", "#1a5276"),
+            ("#d5f5e3", "#27ae60", "#1e8449"),
+            ("#fdebd0", "#e67e22", "#a04000"),
+            ("#f9ebea", "#e74c3c", "#922b21"),
+            ("#e8daef", "#8e44ad", "#6c3483"),
+            ("#d6eaf8", "#1abc9c", "#148f77"),
         ]
 
         doc = fitz.open(self.ruta_pdf_unico)
@@ -837,15 +819,13 @@ class SuiteDocumental:
         top.configure(bg="#fafafa")
         top.grab_set()
 
-        # grupos: lista de listas de índices (base 0) en orden de creación
-        grupos    = []          # [ [0,1], [2,3], … ]
-        seleccion = set()       # páginas marcadas en este momento (pendientes de grupo)
+        grupos    = []
+        seleccion = set()
 
-        # ── Barra superior ───────────────────────────────────────────────────
         bar = tk.Frame(top, bg="#b03a2e", pady=5)
         bar.pack(fill="x")
 
-        lbl_sel = None   # label contador
+        lbl_sel = None
 
         if modo == "select":
             tk.Button(bar, text="✅ Todas",    command=lambda: _sel_all(),
@@ -874,7 +854,6 @@ class SuiteDocumental:
                       bg="#888780", fg="white", font=("Arial", 9),
                       cursor="hand2").pack(side="right", padx=8)
 
-        # ── Panel de grupos (solo modo select) ───────────────────────────────
         if modo == "select":
             gbar = tk.Frame(top, bg="#e8e8f5", pady=4, padx=6)
             gbar.pack(fill="x")
@@ -899,7 +878,6 @@ class SuiteDocumental:
         else:
             lbl_grupos = None
 
-        # ── Canvas scrollable ────────────────────────────────────────────────
         fc = tk.Frame(top, bg="#f0f0fa")
         fc.pack(fill="both", expand=True, padx=4, pady=4)
 
@@ -915,7 +893,6 @@ class SuiteDocumental:
         thumb_refs = []
 
         def _grupo_de(idx):
-            """Devuelve (num_grupo, paleta) si idx está en algún grupo, sino None."""
             for gi, g in enumerate(grupos):
                 if idx in g:
                     return gi, PALETA[gi % len(PALETA)]
@@ -985,8 +962,6 @@ class SuiteDocumental:
             inner.update_idletasks()
             canvas.configure(scrollregion=canvas.bbox("all"))
 
-        # ── Acciones ─────────────────────────────────────────────────────────
-
         def _update_lbl():
             if lbl_sel:
                 ns = len(seleccion)
@@ -1003,12 +978,10 @@ class SuiteDocumental:
             for gi, g in enumerate(grupos):
                 indices_ord = sorted(g)
                 rng = self._indices_to_str(indices_ord)
-                pal = PALETA[gi % len(PALETA)]
                 partes.append(f"G{gi+1}: {rng}")
             lbl_grupos.config(text="  |  ".join(partes))
 
         def _toggle(idx):
-            # No permitir seleccionar páginas ya asignadas a un grupo
             if _grupo_de(idx)[0] is not None:
                 return
             if idx in seleccion:
@@ -1019,7 +992,6 @@ class SuiteDocumental:
             _update_lbl()
 
         def _sel_all():
-            # Solo las que aún no tienen grupo
             ya_en_grupo = {i for g in grupos for i in g}
             seleccion.clear()
             seleccion.update(set(range(n)) - ya_en_grupo)
@@ -1092,11 +1064,10 @@ class SuiteDocumental:
 
         def _aceptar():
             if modo == "select":
-                # Construir el string final a partir de grupos + selección suelta
                 partes = []
                 for g in grupos:
                     partes.append(self._indices_to_str(sorted(g)))
-                if seleccion:          # páginas seleccionadas pero sin grupo asignado
+                if seleccion:
                     partes.append(self._indices_to_str(sorted(seleccion)))
                 resultado = ", ".join(partes)
                 try:
@@ -1104,7 +1075,6 @@ class SuiteDocumental:
                     self.ent_r.insert(0, resultado)
                 except Exception:
                     pass
-                # Guardar en pag_selec para compatibilidad con rotación
                 self.pag_selec = {i for g in grupos for i in g} | seleccion
             doc.close()
             top.destroy()
@@ -1133,7 +1103,6 @@ class SuiteDocumental:
         modo = self.var_ext_modo.get()
 
         def _get_page(reader, idx):
-            """Devuelve la página con rotación aplicada si procede."""
             page = reader.pages[idx]
             rot  = self.rot_map.get(idx, 0)
             if rot:
@@ -1153,7 +1122,6 @@ class SuiteDocumental:
             todas = [n for rango in rangos for n in rango]
 
             if modo == 1:
-                # ── Todas juntas ─────────────────────────────────────────────
                 out = filedialog.asksaveasfilename(
                     title="Guardar PDF como…",
                     defaultextension=".pdf",
@@ -1174,7 +1142,6 @@ class SuiteDocumental:
                 self._abrir_carpeta(out, self.var_ext_abrir)
 
             elif modo == 2:
-                # ── Cada página independiente ────────────────────────────────
                 dest = filedialog.askdirectory(title="Carpeta de destino")
                 if not dest:
                     return
@@ -1194,7 +1161,6 @@ class SuiteDocumental:
                 self._abrir_carpeta(dest, self.var_ext_abrir)
 
             elif modo == 3:
-                # ── Agrupadas por rangos ─────────────────────────────────────
                 dest = filedialog.askdirectory(title="Carpeta de destino")
                 if not dest:
                     return
@@ -1234,7 +1200,7 @@ class SuiteDocumental:
             messagebox.showerror("Error", str(e))
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  🔗  UNIFICADOR PDF — reordenar, eliminar, nombre sugerido, abrir carpeta
+    #  🔗  UNIFICADOR
     # ══════════════════════════════════════════════════════════════════════════
 
     def mostrar_unificador(self):
@@ -1273,61 +1239,130 @@ class SuiteDocumental:
                 messagebox.showerror("Error", str(e))
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  🗜️  COMPRESOR — Ghostscript (real) + fallback PyMuPDF
+    #  🗜️  COMPRESOR — Ghostscript + rasterizado PyMuPDF
     # ══════════════════════════════════════════════════════════════════════════
 
     def mostrar_compresor(self):
         self.limpiar_pantalla("🗜️ Compresor de PDF")
 
-        # Estado de Ghostscript
+        # ── Estado de Ghostscript ───────────────────────────────────────────
         gs = _buscar_ghostscript()
         if gs:
-            estado_txt = f"✅  Ghostscript encontrado"
+            ver = _version_ghostscript(gs)
+            ver_txt = f" v{ver[0]}.{ver[1]}" if ver else ""
+            estado_txt   = f"✅  Ghostscript encontrado{ver_txt}"
             estado_color = "#27ae60"
         else:
-            estado_txt = "⚠️  Ghostscript no encontrado — se usará modo alternativo (menor eficiencia)"
+            estado_txt   = ("⚠️  Ghostscript no encontrado — se usará modo "
+                            "alternativo (menor eficiencia)")
             estado_color = "#e67e22"
         tk.Label(self.main_frame, text=estado_txt, bg="#fafafa",
                  fg=estado_color, font=("Arial", 9, "bold"),
                  wraplength=650, justify="left").pack(anchor="w", pady=(0, 4))
 
         tk.Button(self.main_frame, text="📂 Seleccionar PDF",
-                  command=self.sel_pdf_simple, bg="#2980b9", fg="white").pack(fill="x")
+                  command=self.sel_pdf_simple, bg="#2980b9",
+                  fg="white").pack(fill="x")
         self.lbl_info = tk.Label(self.main_frame, text="Ningún archivo",
                                  bg="#fafafa", fg="gray")
         self.lbl_info.pack(pady=4)
 
         tk.Frame(self.main_frame, bg="#e8e8f5", height=2).pack(fill="x", pady=6)
 
-        # ── Nivel de compresión ──────────────────────────────────────────────
-        tk.Label(self.main_frame, text="Nivel de compresión:",
+        # ── Perfil rápido ───────────────────────────────────────────────────
+        tk.Label(self.main_frame, text="Perfil de compresión:",
                  bg="#fafafa", font=("Arial", 10, "bold")).pack(anchor="w")
 
-        self.var_nivel_gs = tk.StringVar(value="ebook")
-        niveles_gs = [
-            ("screen",   "🔴  Máxima compresión  — reducción 70-90 %, baja calidad visual"),
-            ("ebook",    "🟡  Equilibrado        — reducción 40-70 %  ✔ recomendado"),
-            ("printer",  "🟢  Alta calidad       — reducción 10-40 %, buena nitidez"),
-            ("prepress", "⚪  Preprensa          — mínima compresión, máxima calidad"),
+        self.var_perfil = tk.StringVar(value="equilibrado")
+        perfiles = [
+            ("maxima",       "🔴  Máxima compresión  — dpi 60, JPEG 25  (para subir a web)"),
+            ("equilibrado",  "🟡  Equilibrado        — dpi 96, JPEG 50  ✔ recomendado"),
+            ("buena",        "🟢  Buena calidad      — dpi 150, JPEG 70"),
+            ("alta",         "⚪  Alta calidad       — dpi 200, JPEG 85"),
         ]
-        for val, txt in niveles_gs:
+        for val, txt in perfiles:
             tk.Radiobutton(self.main_frame, text=txt,
-                           variable=self.var_nivel_gs, value=val,
-                           bg="#fafafa", font=("Arial", 9)).pack(anchor="w")
+                           variable=self.var_perfil, value=val,
+                           bg="#fafafa", font=("Arial", 9),
+                           command=self._aplicar_perfil).pack(anchor="w")
+
+        tk.Frame(self.main_frame, bg="#e8e8f5", height=1).pack(fill="x", pady=6)
+
+        # ── Ajuste fino: DPI ────────────────────────────────────────────────
+        f_dpi = tk.Frame(self.main_frame, bg="#fafafa")
+        f_dpi.pack(fill="x", pady=(2, 0))
+        tk.Label(f_dpi, text="Resolución de imagen (dpi):", bg="#fafafa",
+                 font=("Arial", 10, "bold")).pack(anchor="w")
+        self.var_dpi_gs = tk.IntVar(value=96)
+        tk.Scale(f_dpi, from_=40, to=250, orient="horizontal",
+                 variable=self.var_dpi_gs, bg="#fafafa",
+                 length=620, showvalue=True,
+                 tickinterval=0).pack(anchor="w")
+        tk.Label(f_dpi, text="40 = máxima compresión (ilegible en textos pequeños)   ·   "
+                             "250 = casi sin pérdida",
+                 bg="#fafafa", fg="gray", font=("Arial", 8)
+                 ).pack(anchor="w")
+
+        # ── Ajuste fino: Calidad JPEG ───────────────────────────────────────
+        f_jpg = tk.Frame(self.main_frame, bg="#fafafa")
+        f_jpg.pack(fill="x", pady=(2, 0))
+        tk.Label(f_jpg, text="Calidad JPEG de las imágenes:", bg="#fafafa",
+                 font=("Arial", 10, "bold")).pack(anchor="w")
+        self.var_jpg_gs = tk.IntVar(value=50)
+        tk.Scale(f_jpg, from_=10, to=95, orient="horizontal",
+                 variable=self.var_jpg_gs, bg="#fafafa",
+                 length=620, showvalue=True).pack(anchor="w")
+        tk.Label(f_jpg, text="10 = máxima compresión (artefactos visibles)   ·   "
+                             "95 = casi sin pérdida",
+                 bg="#fafafa", fg="gray", font=("Arial", 8)
+                 ).pack(anchor="w")
+
+        # ── Escala de grises ────────────────────────────────────────────────
+        self.var_grises = tk.BooleanVar(value=False)
+        tk.Checkbutton(self.main_frame,
+                       text="Convertir a escala de grises (reduce ~30 % extra en escaneos con poco color)",
+                       variable=self.var_grises, bg="#fafafa",
+                       font=("Arial", 9)).pack(anchor="w", pady=(6, 0))
+
+        # ── Modo rasterizar ────────────────────────────────────────────────
+        tk.Frame(self.main_frame, bg="#e8e8f5", height=1).pack(fill="x", pady=6)
+        self.var_rasterizar = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            self.main_frame,
+            text="🎯 Rasterizar todas las páginas  →  garantiza reducción drástica "
+                 "(pierde texto seleccionable)",
+            variable=self.var_rasterizar, bg="#fafafa",
+            font=("Arial", 9, "bold"), fg="#b03a2e"
+        ).pack(anchor="w", pady=(0, 2))
+        tk.Label(self.main_frame,
+                 text="Úsalo cuando GS apenas reduzca. Cada página se convierte a JPG "
+                      "con el DPI y calidad elegidos.",
+                 bg="#fafafa", fg="#666", font=("Arial", 8)
+                 ).pack(anchor="w", padx=22)
 
         tk.Frame(self.main_frame, bg="#e8e8f5", height=2).pack(fill="x", pady=6)
-
-        tk.Label(self.main_frame,
-                 text="ℹ️  Ghostscript procesa TODO el contenido del PDF (texto, fuentes e imágenes)\n"
-                      "    y garantiza una reducción significativa en cualquier tipo de documento.",
-                 bg="#fafafa", fg="#666", font=("Arial", 8),
-                 justify="left").pack(anchor="w")
 
         self.var_comp_abrir = self._checkbox_abrir(self.main_frame)
 
         tk.Button(self.main_frame, text="🗜️ COMPRIMIR PDF",
                   bg="#b03a2e", fg="white", font=("Arial", 11, "bold"), height=2,
                   command=self.run_compresor).pack(fill="x", pady=8)
+
+    def _aplicar_perfil(self):
+        """Ajusta sliders según el perfil elegido."""
+        p = self.var_perfil.get()
+        valores = {
+            "maxima":      (60, 25),
+            "equilibrado": (96, 50),
+            "buena":       (150, 70),
+            "alta":        (200, 85),
+        }
+        dpi, jpg = valores.get(p, (96, 50))
+        try:
+            self.var_dpi_gs.set(dpi)
+            self.var_jpg_gs.set(jpg)
+        except Exception:
+            pass
 
     def run_compresor(self):
         if not self.ruta_pdf_unico:
@@ -1343,34 +1378,100 @@ class SuiteDocumental:
             return
 
         orig_kb = os.path.getsize(self.ruta_pdf_unico) / 1024
-        gs = _buscar_ghostscript()
+        gs      = _buscar_ghostscript()
+        dpi     = int(self.var_dpi_gs.get())
+        jpg_q   = int(self.var_jpg_gs.get())
+        grises  = bool(self.var_grises.get())
+        raster  = bool(self.var_rasterizar.get())
 
         try:
-            if gs:
-                # ── GHOSTSCRIPT (mejor compresión real) ──────────────────────
-                calidad = self.var_nivel_gs.get()
+            if raster:
+                # ═══════════════════════════════════════════════════════════
+                #  MODO RASTERIZAR — convierte cada página a JPG y reconstruye
+                # ═══════════════════════════════════════════════════════════
+                doc     = fitz.open(self.ruta_pdf_unico)
+                out_doc = fitz.open()
+                zoom    = dpi / 72.0
+                colorspace = fitz.csGRAY if grises else fitz.csRGB
+
+                for page in doc:
+                    pix = page.get_pixmap(
+                        matrix=fitz.Matrix(zoom, zoom),
+                        alpha=False,
+                        colorspace=colorspace,
+                    )
+                    img_bytes = pix.tobytes(output="jpeg", jpg_quality=jpg_q)
+
+                    nueva = out_doc.new_page(
+                        width=page.rect.width, height=page.rect.height)
+                    nueva.insert_image(nueva.rect, stream=img_bytes)
+
+                out_doc.save(out, garbage=4, deflate=True, clean=True)
+                out_doc.close()
+                doc.close()
+                metodo = (f"Rasterizado (dpi={dpi}, JPEGQ={jpg_q}"
+                          f"{', gris' if grises else ''})")
+
+            elif gs:
+                # ═══════════════════════════════════════════════════════════
+                #  GHOSTSCRIPT — downsampling + JPEG forzados
+                # ═══════════════════════════════════════════════════════════
                 cmd = [
                     gs,
                     "-sDEVICE=pdfwrite",
                     "-dCompatibilityLevel=1.4",
-                    f"-dPDFSETTINGS=/{calidad}",
                     "-dNOPAUSE", "-dQUIET", "-dBATCH",
-                    f"-sOutputFile={out}",
-                    self.ruta_pdf_unico,
+
+                    "-dDownsampleColorImages=true",
+                    "-dColorImageDownsampleType=/Bicubic",
+                    f"-dColorImageResolution={dpi}",
+                    "-dColorImageDownsampleThreshold=1.0",
+
+                    "-dDownsampleGrayImages=true",
+                    "-dGrayImageDownsampleType=/Bicubic",
+                    f"-dGrayImageResolution={dpi}",
+                    "-dGrayImageDownsampleThreshold=1.0",
+
+                    "-dDownsampleMonoImages=true",
+                    "-dMonoImageDownsampleType=/Subsample",
+                    "-dMonoImageResolution=150",
+                    "-dMonoImageDownsampleThreshold=1.0",
+
+                    "-dAutoFilterColorImages=false",
+                    "-dColorImageFilter=/DCTEncode",
+                    "-dAutoFilterGrayImages=false",
+                    "-dGrayImageFilter=/DCTEncode",
+                    f"-dJPEGQ={jpg_q}",
+
+                    "-dDetectDuplicateImages=true",
+                    "-dCompressFonts=true",
+                    "-dSubsetFonts=true",
+                    "-dEmbedAllFonts=false",
+                    "-dNOTICE/fonts=false",
                 ]
+                if grises:
+                    cmd += [
+                        "-sColorConversionStrategy=Gray",
+                        "-dProcessColorModel=/DeviceGray",
+                    ]
+                cmd += [f"-sOutputFile={out}", self.ruta_pdf_unico]
+
                 subprocess.run(cmd, check=True,
                                creationflags=subprocess.CREATE_NO_WINDOW)
-                metodo = "Ghostscript"
+                metodo = (f"Ghostscript (dpi={dpi}, JPEGQ={jpg_q}"
+                          f"{', gris' if grises else ''})")
 
             else:
-                # ── FALLBACK PyMuPDF — limpieza + streams ────────────────────
+                # ═══════════════════════════════════════════════════════════
+                #  FALLBACK PyMuPDF
+                # ═══════════════════════════════════════════════════════════
                 doc = fitz.open(self.ruta_pdf_unico)
                 doc.save(out, garbage=4, deflate=True,
                          deflate_images=True, deflate_fonts=True, clean=True)
                 doc.close()
                 metodo = "PyMuPDF (instala Ghostscript para mejor resultado)"
 
-            nuevo_kb = os.path.getsize(out) / 1024
+            nuevo_kb  = os.path.getsize(out) / 1024
             reduccion = (orig_kb - nuevo_kb) / orig_kb * 100 if orig_kb > 0 else 0
             messagebox.showinfo(
                 "Compresión completada",
@@ -1383,7 +1484,7 @@ class SuiteDocumental:
             messagebox.showerror("Error", str(e))
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  🔍  EXTRAER TEXTO — botón "Seleccionar todo"
+    #  🔍  EXTRAER TEXTO
     # ══════════════════════════════════════════════════════════════════════════
 
     def mostrar_ocr(self):
@@ -1440,7 +1541,7 @@ class SuiteDocumental:
             messagebox.showinfo("Éxito", "Texto guardado.")
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  🔐  PONER CLAVE — nombre sugerido "original_protegido", abrir carpeta
+    #  🔐  PONER CLAVE
     # ══════════════════════════════════════════════════════════════════════════
 
     def mostrar_proteccion(self):
@@ -1486,7 +1587,7 @@ class SuiteDocumental:
                 messagebox.showerror("Error", str(e))
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  🔓  QUITAR CLAVE — nombre sugerido "original_desprotegido", abrir carpeta
+    #  🔓  QUITAR CLAVE
     # ══════════════════════════════════════════════════════════════════════════
 
     def mostrar_desproteccion(self):
