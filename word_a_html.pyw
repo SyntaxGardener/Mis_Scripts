@@ -241,7 +241,7 @@ class App(tk.Tk):
         self.resizable(False, False)
         self.docx_path = None
 
-        width, height = 520, 400
+        width, height = 560, 430
         screen_w = self.winfo_screenwidth()
         x = (screen_w - width) // 2
         y = 5
@@ -279,6 +279,19 @@ class App(tk.Tk):
 
         step2 = tk.LabelFrame(self, text=' 2. Generar HTML ', padx=10, pady=10)
         step2.pack(fill='x', pady=10)
+
+        self.format_var = tk.StringVar(value='html')
+        format_frame = tk.Frame(step2)
+        format_frame.pack(anchor='w', fill='x', pady=(0, 8))
+        tk.Label(format_frame, text='Guardar como:').pack(anchor='w')
+        tk.Radiobutton(
+            format_frame, text='Archivo HTML (.html)', variable=self.format_var, value='html'
+        ).pack(anchor='w')
+        tk.Radiobutton(
+            format_frame, text='Archivo de texto (.txt) — para copiar y pegar el código',
+            variable=self.format_var, value='txt'
+        ).pack(anchor='w')
+
         self.convert_btn = tk.Button(
             step2, text='Convertir y guardar como…', command=self.convert, state='disabled'
         )
@@ -301,12 +314,19 @@ class App(tk.Tk):
     def convert(self):
         if not self.docx_path:
             return
-        default_name = os.path.splitext(os.path.basename(self.docx_path))[0] + '.html'
+
+        fmt = self.format_var.get()
+        ext = '.html' if fmt == 'html' else '.txt'
+        filetypes = (
+            [('Archivo HTML', '*.html')] if fmt == 'html'
+            else [('Archivo de texto', '*.txt')]
+        )
+        default_name = os.path.splitext(os.path.basename(self.docx_path))[0] + ext
         save_path = filedialog.asksaveasfilename(
-            title='Guardar HTML como…',
-            defaultextension='.html',
+            title='Guardar como…',
+            defaultextension=ext,
             initialfile=default_name,
-            filetypes=[('Archivo HTML', '*.html')]
+            filetypes=filetypes
         )
         if not save_path:
             return
@@ -326,7 +346,8 @@ class App(tk.Tk):
 
         self.status_label.config(text=f'Archivo guardado correctamente:\n{save_path}')
         self.open_folder(os.path.dirname(save_path))
-        messagebox.showinfo('Conversión completada', 'El archivo HTML se ha generado y guardado correctamente.')
+        messagebox.showinfo('Conversión completada', 'El código se ha generado y guardado correctamente.')
+
 
     def open_folder(self, folder):
         try:
