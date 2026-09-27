@@ -75,16 +75,15 @@ def wrap_formatting(text, bold, italic, underline):
 # Estilos de las "píldoras" de enlaces -----------------------------------
 
 VIDEO_LINK_STYLE = (
-    'display:inline-block;background:#e8f1fd;color:#1a5296;padding:3px 10px;'
-    'margin:2px 4px 2px 0;border-radius:12px;font-size:12px;font-weight:600;'
+    'display:inline-block;background:#e8f1fd;color:#1a5296;padding:3px 9px;'
+    'margin:2px 4px 2px 0;border-radius:12px;font-size:11.5px;font-weight:600;'
     'text-decoration:none;vertical-align:middle;line-height:1.6;'
 )
 
 NUMBER_LINK_STYLE = (
-    'display:inline-flex;align-items:center;justify-content:center;'
-    'width:20px;height:20px;background:#ff9f43;color:#ffffff;'
-    'border-radius:50%;font-size:11px;font-weight:700;text-decoration:none;'
-    'margin:2px 3px 2px 0;vertical-align:middle;'
+    'background:#e6493a;color:#ffffff;'
+    'padding:3px 7px;margin:2px 3px 2px 0;border-radius:999px;'
+    'font-size:11px;font-weight:700;text-decoration:none;'
 )
 
 SEPARATOR_STYLE = 'color:#9aa3ad;font-size:11px;'
@@ -151,7 +150,7 @@ def cell_to_html(cell, part):
     paras = [p for p in paras if p != '']
     if not paras:
         return '&nbsp;'
-    return ''.join(f'<div style="margin:3px 0;">{p}</div>' for p in paras)
+    return ''.join(f'<div style="margin:6px 0;">{p}</div>' for p in paras)
 
 
 def is_section_header_row(row):
