@@ -105,13 +105,43 @@ def render_link(text, url):
     )
 
 
+def extract_url_from_field_instr(instr):
+    """Extrae la URL de una instrucción de campo tipo ' HYPERLINK "http://..." '."""
+    m = re.search(r'HYPERLINK\s+"([^"]+)"', instr or '')
+    return m.group(1) if m else ''
+
+
+def paragraph_has_any_link(children):
+    for c in children:
+        if c.tag == qn('w:hyperlink') or c.tag == qn('w:fldSimple'):
+            return True
+        if c.tag == qn('w:r') and c.find(qn('w:fldChar')) is not None:
+            return True
+    return False
+
+
 def paragraph_to_html(paragraph, part):
-    """Convierte un párrafo -hipervínculos, formato y texto suelto- a HTML."""
+    """Convierte un párrafo -hipervínculos, formato y texto suelto- a HTML.
+
+    Contempla dos formas en que Word guarda un hipervínculo:
+    - <w:hyperlink> (la forma habitual, con relación r:id al documento).
+    - "Field codes" (<w:fldChar>/<w:instrText> con HYPERLINK "url"), una
+      forma alternativa que Word usa a veces (por ejemplo con enlaces
+      pegados desde el navegador) y que, sin este tratamiento especial,
+      hace que el enlace se pierda al convertir aunque el texto sí
+      aparezca -normalmente en color morado si ya se había visitado-.
+    """
     children = list(paragraph._p)
-    has_link = any(c.tag == qn('w:hyperlink') for c in children)
+    has_link = paragraph_has_any_link(children)
     pieces = []
+
+    field_state = None      # None | 'instr' | 'text'
+    field_instr_parts = []
+    field_text_parts = []
+
     for child in children:
         tag = child.tag
+
         if tag == qn('w:hyperlink'):
             r_id = child.get(qn('r:id'))
             url = ''
@@ -125,7 +155,51 @@ def paragraph_to_html(paragraph, part):
             )
             if text.strip():
                 pieces.append(render_link(text, url))
-        elif tag == qn('w:r'):
+            continue
+
+        if tag == qn('w:fldSimple'):
+            instr = child.get(qn('w:instr')) or ''
+            url = extract_url_from_field_instr(instr)
+            text = ''.join(
+                run_text_and_formatting(run_el)[0] for run_el in child.iter(qn('w:r'))
+            )
+            if text.strip():
+                pieces.append(render_link(text, url) if url else escape(text))
+            continue
+
+        if tag == qn('w:r'):
+            fld_char = child.find(qn('w:fldChar'))
+            if fld_char is not None:
+                fld_type = fld_char.get(qn('w:fldCharType'))
+                if fld_type == 'begin':
+                    field_state = 'instr'
+                    field_instr_parts = []
+                    field_text_parts = []
+                elif fld_type == 'separate':
+                    field_state = 'text'
+                elif fld_type == 'end':
+                    if field_state == 'text':
+                        url = extract_url_from_field_instr(''.join(field_instr_parts))
+                        text = ''.join(field_text_parts)
+                        if text.strip():
+                            pieces.append(render_link(text, url) if url else escape(text))
+                    field_state = None
+                    field_instr_parts = []
+                    field_text_parts = []
+                continue
+
+            instr_text_el = child.find(qn('w:instrText'))
+            if field_state == 'instr':
+                if instr_text_el is not None:
+                    field_instr_parts.append(instr_text_el.text or '')
+                continue
+            if field_state == 'text':
+                text, _, _, _ = run_text_and_formatting(child)
+                if text:
+                    field_text_parts.append(text)
+                continue
+
+            # Run normal, fuera de cualquier campo
             text, bold, italic, underline = run_text_and_formatting(child)
             if not text:
                 continue
@@ -142,6 +216,7 @@ def paragraph_to_html(paragraph, part):
                 # Texto con contenido propio (p. ej. "Publicidad:") se
                 # mantiene legible en tamaño normal.
                 pieces.append(f'<span style="font-size:12.5px;color:#3a3a3a;">{formatted}</span>')
+
     return ''.join(pieces)
 
 
