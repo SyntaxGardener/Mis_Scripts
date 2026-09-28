@@ -90,18 +90,23 @@ SEPARATOR_STYLE = 'color:#9aa3ad;font-size:11px;'
 
 
 def render_link(text, url):
-    """Renderiza un hipervínculo como píldora de vídeo o burbuja numerada."""
+    """Renderiza un hipervínculo como píldora de vídeo o burbuja numerada.
+
+    La clase 'nomediaplugin' es una convención que respeta Moodle para no
+    sustituir el enlace por un reproductor incrustado (lo que en algunas
+    plataformas deja el vídeo sin sonar y sin funcionar como enlace).
+    """
     if not url:
         return escape(text)
     stripped = text.strip()
     if stripped.isdigit():
         return (
             f'<a href="{escape(url)}" target="_blank" rel="noopener" '
-            f'style="{NUMBER_LINK_STYLE}">{escape(stripped)}</a>'
+            f'class="nomediaplugin" style="{NUMBER_LINK_STYLE}">{escape(stripped)}</a>'
         )
     return (
         f'<a href="{escape(url)}" target="_blank" rel="noopener" '
-        f'style="{VIDEO_LINK_STYLE}">&#9654; {escape(text.strip())}</a>'
+        f'class="nomediaplugin" style="{VIDEO_LINK_STYLE}">&#9654; {escape(text.strip())}</a>'
     )
 
 
@@ -276,8 +281,9 @@ def table_to_html(table, part, first_row_header):
 
     table_style = (
         'border-collapse:collapse;font-family:"Segoe UI",Arial,sans-serif;'
+        'width:650px;max-width:100%;'
     )
-    table_html = f'<table style="{table_style}">\n' + '\n'.join(rows_html) + '\n</table>'
+    table_html = f'<table width="650" style="{table_style}">\n' + '\n'.join(rows_html) + '\n</table>'
 
     # Envoltorio para esquinas redondeadas, sombra suave y centrado
     # (el ancho se ajusta al contenido en vez de forzar el 100%).
