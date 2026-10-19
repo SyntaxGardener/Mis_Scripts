@@ -611,7 +611,7 @@ class MenuFinalPerfecto:
         n = nombre.lower()
         if nombre in self.favoritos:
             return "FAVORITOS"
-        if any(x in n for x in ["expulsar", "test", "usb", "windows", "pc", 
+        if any(x in n for x in ["expulsar", "test", "usb", "windows", "control", 
                                   "imports", "limpieza", "metadatos", "borrar", "temp",
                                   "cerrar", "portapapeles", "organizador"]):
             return "SISTEMA"
