@@ -723,26 +723,100 @@ class DescargadorApp:
         if "tiktok.com" not in url:
             messagebox.showwarning("Atención", "La URL introducida no parece ser de TikTok.")
             return
+        url = url.split("?")[0]          # quitar parámetros (?lang=es, etc.)
         folder = os.path.normpath(folder)
         fmt = self.tiktok_format.get()
-        ydl_opts = {
-            'outtmpl': os.path.join(folder, '%(uploader)s_%(id)s.%(ext)s'),
-            'noplaylist': True,
-            'ffmpeg_location': RUTA_FFMPEG,
-            'progress_hooks': [self._progress_hook],
-        }
-        if fmt == "mp3":
-            ydl_opts.update({
-                'format': 'bestaudio/best',
-                'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
-            })
-        else:
-            # yt-dlp prioriza automáticamente el vídeo "playAddr" sin marca de agua cuando existe
-            ydl_opts['format'] = 'bestvideo+bestaudio/best'
-            ydl_opts['merge_output_format'] = 'mp4'
         self._busy = True
         self._status(f"Iniciando descarga TikTok ({fmt})…")
-        threading.Thread(target=self._run_download, args=(ydl_opts, url, folder, self.tiktok_open_folder.get()), daemon=True).start()
+        threading.Thread(target=self._tiktok_descargar,
+                         args=(url, folder, fmt, self.tiktok_open_folder.get()),
+                         daemon=True).start()
+
+    def _tiktok_descargar(self, url, folder, fmt, open_folder):
+        """Intenta varias estrategias: suplantación de Chrome y cookies de navegador."""
+        self.pbar.start(10)
+        try:
+            import yt_dlp
+        except ImportError:
+            messagebox.showerror("Error", "yt-dlp no está instalado.\nEjecuta: pip install yt-dlp")
+            self.pbar.stop()
+            self._busy = False
+            return
+
+        # ¿Está disponible la suplantación de navegador (curl_cffi)?
+        try:
+            import curl_cffi  # noqa: F401
+            puede_impersonar = True
+        except ImportError:
+            puede_impersonar = False
+
+        def base_opts():
+            o = {
+                'outtmpl': os.path.join(folder, '%(uploader)s_%(id)s.%(ext)s'),
+                'noplaylist': True,
+                'ffmpeg_location': RUTA_FFMPEG,
+                'progress_hooks': [self._progress_hook],
+                'retries': 5,
+            }
+            if puede_impersonar:
+                o['impersonate'] = 'chrome'
+            if fmt == "mp3":
+                o.update({
+                    'format': 'bestaudio/best',
+                    'postprocessors': [{'key': 'FFmpegExtractAudio',
+                                        'preferredcodec': 'mp3',
+                                        'preferredquality': '192'}],
+                })
+            else:
+                o['format'] = 'bestvideo+bestaudio/best'
+                o['merge_output_format'] = 'mp4'
+            return o
+
+        # Orden de intentos: sin cookies, y luego cookies de cada navegador
+        intentos = [("sin cookies", None)]
+        for nav in ("firefox", "edge", "chrome", "brave"):
+            intentos.append((f"cookies de {nav}", nav))
+
+        ultimo_error = None
+        exito = False
+        for nombre, navegador in intentos:
+            self._status(f"Descargando TikTok ({nombre})…")
+            opts = base_opts()
+            if navegador:
+                opts['cookiesfrombrowser'] = (navegador,)
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    ydl.download([url])
+                exito = True
+                break
+            except Exception as exc:
+                ultimo_error = exc
+                continue
+
+        try:
+            if exito:
+                self._status("✅ Descarga completada")
+                messagebox.showinfo("Éxito", "¡Archivo guardado correctamente!")
+                if open_folder and os.path.exists(folder):
+                    if sys.platform == "win32":
+                        os.startfile(folder)
+                    elif sys.platform == "darwin":
+                        import subprocess
+                        subprocess.Popen(["open", folder])
+                    else:
+                        import subprocess
+                        subprocess.Popen(["xdg-open", folder])
+            else:
+                self._status("❌ Error en la descarga")
+                extra = ""
+                if not puede_impersonar:
+                    extra = ("\n\nSugerencia: instala la suplantación de navegador con\n"
+                             "pip install -U \"yt-dlp[default,curl-cffi]\"")
+                messagebox.showerror("Error", f"{ultimo_error}{extra}")
+        finally:
+            self.pbar.stop()
+            self.pbar.configure(mode="indeterminate", value=0)
+            self._busy = False
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
