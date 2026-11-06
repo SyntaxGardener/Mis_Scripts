@@ -795,8 +795,10 @@ class DescargadorApp:
                 exito = True
                 break
             except Exception as exc:
-                msg = str(exc).replace("ERROR: ", "").strip()
-                errores.append(f"• {nombre}: {msg[:140]}")
+                msg = " ".join(str(exc).replace("ERROR: ", "").split())
+                if not msg:
+                    msg = repr(exc)
+                errores.append(f"• {nombre}: [{type(exc).__name__}] {msg[:160]}")
                 continue
 
         try:
