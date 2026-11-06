@@ -772,25 +772,31 @@ class DescargadorApp:
                 o['merge_output_format'] = 'mp4'
             return o
 
-        # Orden de intentos: sin cookies, y luego cookies de cada navegador
-        intentos = [("sin cookies", None)]
+        # Orden de intentos: sin cookies, cookies.txt (si existe) y cookies de navegador
+        intentos = [("sin cookies", None, None)]
+        cookies_txt = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
+        if os.path.exists(cookies_txt):
+            intentos.append(("cookies.txt", None, cookies_txt))
         for nav in ("firefox", "edge", "chrome", "brave"):
-            intentos.append((f"cookies de {nav}", nav))
+            intentos.append((f"cookies de {nav}", nav, None))
 
-        ultimo_error = None
+        errores = []
         exito = False
-        for nombre, navegador in intentos:
+        for nombre, navegador, archivo in intentos:
             self._status(f"Descargando TikTok ({nombre})…")
             opts = base_opts()
             if navegador:
                 opts['cookiesfrombrowser'] = (navegador,)
+            if archivo:
+                opts['cookiefile'] = archivo
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     ydl.download([url])
                 exito = True
                 break
             except Exception as exc:
-                ultimo_error = exc
+                msg = str(exc).replace("ERROR: ", "").strip()
+                errores.append(f"• {nombre}: {msg[:140]}")
                 continue
 
         try:
@@ -812,7 +818,10 @@ class DescargadorApp:
                 if not puede_impersonar:
                     extra = ("\n\nSugerencia: instala la suplantación de navegador con\n"
                              "pip install -U \"yt-dlp[default,curl-cffi]\"")
-                messagebox.showerror("Error", f"{ultimo_error}{extra}")
+                extra += ("\n\nSolución recomendada: exporta tus cookies de TikTok a un archivo "
+                          "llamado cookies.txt (extensión 'Get cookies.txt LOCALLY') "
+                          "y ponlo junto a este script.")
+                messagebox.showerror("Error", "Todos los intentos fallaron:\n\n" + "\n".join(errores) + extra)
         finally:
             self.pbar.stop()
             self.pbar.configure(mode="indeterminate", value=0)
